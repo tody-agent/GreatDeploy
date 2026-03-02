@@ -223,17 +223,11 @@ final class GitConfigService {
         }
     }
 
-    /// Clears cached credentials for GitHub from ALL git credential helpers
-    /// This forces git to fetch fresh credentials from Keychain on next operation
+    /// Clears in-memory credential caches so git re-reads fresh credentials from Keychain
+    /// NOTE: Only clears transient caches — does NOT erase the persistent keychain entry
     func clearGitHubCredentialCache() throws {
-        // Clear credential-cache helper (in-memory cache)
+        // Clear credential-cache helper (in-memory cache only)
         clearCredentialCacheHelper()
-
-        // Clear credential-osxkeychain helper
-        clearCredentialOsxkeychainHelper()
-
-        // Use git credential reject to clear ALL configured helpers
-        clearAllCredentialHelpers()
     }
 
     /// Clears the in-memory credential cache (credential-cache helper)
@@ -259,86 +253,6 @@ final class GitConfigService {
         } catch {
             // Ignore errors - cache might not be running
             print("Note: credential-cache not active (this is normal)")
-        }
-    }
-
-    /// Clears osxkeychain credential cache
-    private func clearCredentialOsxkeychainHelper() {
-        let process = Process()
-        let inputPipe = Pipe()
-
-        guard let validatedGitPath = try? gitPath else { return }
-        process.executableURL = URL(fileURLWithPath: validatedGitPath)
-        process.arguments = ["credential-osxkeychain", "erase"]
-        process.standardInput = inputPipe
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        // SECURITY: Sanitize environment
-        process.environment = [
-            "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
-            "PATH": "/usr/bin:/bin:/usr/local/bin",
-            "LANG": "en_US.UTF-8"
-        ]
-
-        do {
-            try process.run()
-
-            // Send the credential protocol to erase GitHub credentials
-            let credentialInput = """
-            protocol=https
-            host=github.com
-
-            """
-
-            if let data = credentialInput.data(using: .utf8) {
-                inputPipe.fileHandleForWriting.write(data)
-                try? inputPipe.fileHandleForWriting.close()
-            }
-
-            process.waitUntilExit()
-        } catch {
-            print("Failed to clear osxkeychain cache: \(error.localizedDescription)")
-        }
-    }
-
-    /// Uses git credential reject to clear ALL configured credential helpers
-    private func clearAllCredentialHelpers() {
-        let process = Process()
-        let inputPipe = Pipe()
-
-        guard let validatedGitPath = try? gitPath else { return }
-        process.executableURL = URL(fileURLWithPath: validatedGitPath)
-        process.arguments = ["credential", "reject"]
-        process.standardInput = inputPipe
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        // SECURITY: Sanitize environment
-        process.environment = [
-            "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
-            "PATH": "/usr/bin:/bin:/usr/local/bin",
-            "LANG": "en_US.UTF-8"
-        ]
-
-        do {
-            try process.run()
-
-            // Send the credential protocol to reject GitHub credentials
-            let credentialInput = """
-            protocol=https
-            host=github.com
-
-            """
-
-            if let data = credentialInput.data(using: .utf8) {
-                inputPipe.fileHandleForWriting.write(data)
-                try? inputPipe.fileHandleForWriting.close()
-            }
-
-            process.waitUntilExit()
-        } catch {
-            print("Failed to clear credential helpers: \(error.localizedDescription)")
         }
     }
 

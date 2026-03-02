@@ -230,33 +230,44 @@ final class KeychainService {
 
     /// Updates or adds THE SINGLE GitHub credential in Keychain
     /// This app maintains only ONE github.com entry that gets updated on account switch
-    /// Uses the exact format that git credential-osxkeychain expects
+    /// Uses Security framework directly for reliable keychain access
     /// - Parameters:
     ///   - username: GitHub username for current account
     ///   - token: Personal Access Token for current account
     func updateGitHubCredential(username: String, token: String) throws {
-        // First, delete any existing github.com credential to ensure clean state
-        // This is the most reliable approach as git credential-osxkeychain
-        // expects a specific format that may conflict with Security framework defaults
+        guard let tokenData = token.data(using: .utf8) else {
+            throw KeychainError.encodingFailed
+        }
+
+        // Clean up existing entries (git erase + SecItemDelete)
         try? deleteGitHubCredential()
 
-        // Use git credential-osxkeychain store to add the credential
-        // This ensures the format is exactly what git expects
-        try storeCredentialUsingGit(username: username, token: token)
-    }
+        // Add new credential via Security framework
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassInternetPassword,
+            kSecAttrServer as String: githubServer,
+            kSecAttrProtocol as String: kSecAttrProtocolHTTPS
+        ]
 
-    /// Stores credential using git credential-osxkeychain for perfect compatibility
-    private func storeCredentialUsingGit(username: String, token: String) throws {
-        try runGitCredentialCommand(
-            action: "store",
-            input: """
-            protocol=https
-            host=github.com
-            username=\(username)
-            password=\(token)
+        var addQuery = query
+        addQuery[kSecAttrAccount as String] = username
+        addQuery[kSecValueData as String] = tokenData
 
-            """
-        )
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+
+        if status == errSecDuplicateItem {
+            // Existing entry couldn't be deleted (partition ID mismatch) — update it instead
+            let attrs: [String: Any] = [
+                kSecAttrAccount as String: username,
+                kSecValueData as String: tokenData
+            ]
+            let updateStatus = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+            guard updateStatus == errSecSuccess else {
+                throw KeychainError.unexpectedStatus(updateStatus)
+            }
+        } else if status != errSecSuccess {
+            throw KeychainError.unexpectedStatus(status)
+        }
     }
 
     /// Runs a git credential-osxkeychain command with the given action and input
@@ -325,7 +336,6 @@ final class KeychainService {
 
     /// Erases credential using git credential-osxkeychain for proper cleanup
     private func eraseCredentialUsingGit() {
-        // Use the same helper as storeCredentialUsingGit for consistency
         // Ignore errors since credential might not exist
         try? runGitCredentialCommand(
             action: "erase",
