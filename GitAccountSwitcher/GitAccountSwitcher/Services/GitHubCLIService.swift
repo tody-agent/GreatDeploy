@@ -387,6 +387,12 @@ final class GitHubCLIService {
             throw GitHubCLIError.commandFailed(stderr.isEmpty ? "Unknown error" : stderr)
         }
 
+        // Some gh commands (e.g., gh auth switch) output success messages to stderr
+        // even with exit code 0. Fall back to stderr when stdout is empty.
+        if stdout.isEmpty && !stderr.isEmpty {
+            return stderr
+        }
+
         return stdout
     }
 }

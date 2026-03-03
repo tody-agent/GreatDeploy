@@ -88,6 +88,18 @@ struct AddEditAccountView: View {
     @State private var showingCLIReminder = false
     @State private var savedAccountName = ""
 
+    // CLI auth validation
+    @State private var cliAuthStatus: CLIAuthCheckStatus = .unchecked
+    @State private var cliCheckTask: Task<Void, Never>?
+
+    enum CLIAuthCheckStatus: Equatable {
+        case unchecked
+        case checking
+        case authenticated
+        case notAuthenticated
+        case cliNotAvailable
+    }
+
     // MARK: - Token Validation Helper
 
     /// Checks if token is valid, considering edit mode where unchanged tokens are accepted
@@ -157,6 +169,8 @@ struct AddEditAccountView: View {
         .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
         .onAppear(perform: loadExistingAccount)
         .onDisappear {
+            // Cancel any in-flight CLI check
+            cliCheckTask?.cancel()
             // SECURITY: Securely zero token from memory when view closes
             ValidationUtilities.secureZeroString(&personalAccessToken)
         }
@@ -224,6 +238,58 @@ struct AddEditAccountView: View {
             TextField("GitHub Username", text: $githubUsername)
                 .textFieldStyle(.roundedBorder)
                 .autocorrectionDisabled()
+                .onChange(of: githubUsername) { newValue in
+                    cliCheckTask?.cancel()
+                    let trimmed = newValue.trimmingCharacters(in: .whitespaces)
+                    guard !trimmed.isEmpty, ValidationUtilities.isValidGitHubUsername(trimmed) else {
+                        cliAuthStatus = .unchecked
+                        return
+                    }
+                    cliCheckTask = Task {
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        guard !Task.isCancelled else { return }
+                        await checkCLIAuthStatus(for: trimmed)
+                    }
+                }
+
+            // CLI auth status indicator
+            if cliAuthStatus != .unchecked {
+                HStack(spacing: 6) {
+                    switch cliAuthStatus {
+                    case .checking:
+                        ProgressView()
+                            .scaleEffect(0.6)
+                        Text("Checking GitHub CLI...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    case .authenticated:
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.caption)
+                        Text("Authenticated in GitHub CLI")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    case .notAuthenticated:
+                        Image(systemName: "info.circle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.caption)
+                        Text("Not in GitHub CLI — run 'gh auth login' for CLI switching")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    case .cliNotAvailable:
+                        Image(systemName: "terminal")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                        Text("GitHub CLI not available")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    case .unchecked:
+                        EmptyView()
+                    }
+                    Spacer()
+                }
+                .padding(.top, 2)
+            }
 
             HStack {
                 SecureField("Personal Access Token", text: $personalAccessToken)
@@ -374,6 +440,32 @@ struct AddEditAccountView: View {
     }
 
     // MARK: - Actions
+
+    /// Checks if the entered username exists in gh auth status (non-blocking, informational)
+    private func checkCLIAuthStatus(for username: String) async {
+        guard GitHubCLIService.shared.isInstalled else {
+            await MainActor.run { cliAuthStatus = .cliNotAvailable }
+            return
+        }
+
+        await MainActor.run { cliAuthStatus = .checking }
+
+        do {
+            let accounts = try await GitHubCLIService.shared.getAuthenticatedAccounts()
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                if accounts.contains(where: { $0.lowercased() == username.lowercased() }) {
+                    cliAuthStatus = .authenticated
+                } else {
+                    cliAuthStatus = .notAuthenticated
+                }
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            await MainActor.run { cliAuthStatus = .cliNotAvailable }
+        }
+    }
 
     private func loadExistingAccount() {
         guard case .edit(let account) = mode else { return }

@@ -116,7 +116,7 @@ extension View {
             try await accountStore.switchToAccount(account)
 
             if showNotification {
-                await showEnhancedNotification(for: account)
+                await showEnhancedNotification(for: account, cliStatus: accountStore.lastCLISwitchStatus)
             }
 
             // Clear dock badge on success
@@ -130,13 +130,32 @@ extension View {
         }
     }
 
-    /// Shows enhanced notification with rich content
+    /// Shows enhanced notification with rich content and CLI status
     @MainActor
-    private func showEnhancedNotification(for account: GitAccount) async {
+    private func showEnhancedNotification(
+        for account: GitAccount,
+        cliStatus: AccountStore.CLISwitchStatus = .none
+    ) async {
         let content = UNMutableNotificationContent()
         content.title = "Git Account Switched"
         content.subtitle = "Now using: \(account.displayName)"
-        content.body = "GitHub: @\(account.githubUsername)\nEmail: \(account.gitUserEmail)"
+
+        var body = "GitHub: @\(account.githubUsername)\nEmail: \(account.gitUserEmail)"
+
+        switch cliStatus {
+        case .success:
+            body += "\nGitHub CLI: Switched"
+        case .accountNotInCLI:
+            body += "\nGitHub CLI: Not authenticated (run 'gh auth login')"
+        case .notLoggedIn:
+            body += "\nGitHub CLI: Not logged in"
+        case .failed(let message):
+            body += "\nGitHub CLI: Switch failed - \(message)"
+        case .notInstalled, .none:
+            break
+        }
+
+        content.body = body
         content.sound = .default
         content.categoryIdentifier = "ACCOUNT_SWITCH"
         content.userInfo = ["accountId": account.id.uuidString]
@@ -209,6 +228,33 @@ struct MainWindowView: View {
                 } else {
                     accountListView
                         .transition(.slide)
+                }
+
+                // CLI switch status banner
+                if case .accountNotInCLI(let username) = accountStore.lastCLISwitchStatus {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.caption)
+                        Text("'\(username)' not in GitHub CLI. Run 'gh auth login' for CLI support.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                accountStore.clearCLISwitchStatus()
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    .background(Color.orange.opacity(0.08))
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 Divider()

@@ -22,6 +22,18 @@ final class AccountStore: ObservableObject {
     @Published private(set) var lastError: Error?
     @Published private(set) var currentGitConfig: (name: String?, email: String?) = (nil, nil)
 
+    /// Status of the last GitHub CLI account switch attempt
+    enum CLISwitchStatus: Equatable {
+        case none
+        case success(String)
+        case notInstalled
+        case accountNotInCLI(String)
+        case notLoggedIn
+        case failed(String)
+    }
+
+    @Published private(set) var lastCLISwitchStatus: CLISwitchStatus = .none
+
     // MARK: - Services
 
     private let keychainService = KeychainService.shared
@@ -326,7 +338,7 @@ final class AccountStore: ObservableObject {
         }
     }
 
-    /// Switches the GitHub CLI account (best-effort, non-blocking)
+    /// Switches the GitHub CLI account and reports status via lastCLISwitchStatus
     /// This runs `gh auth switch --user <username>` to sync CLI authentication
     private func switchGitHubCLIAccount(to username: String) async {
         Self.logger.info("switchGitHubCLIAccount called for: \(username)")
@@ -334,24 +346,31 @@ final class AccountStore: ObservableObject {
         // Skip if CLI is not installed
         guard gitHubCLIService.isInstalled else {
             Self.logger.info("GitHub CLI not installed, skipping gh auth switch")
+            lastCLISwitchStatus = .notInstalled
             return
         }
 
         Self.logger.info("GitHub CLI is installed, proceeding with switch...")
 
         do {
-            _ = try await gitHubCLIService.switchAccount(to: username)
-            Self.logger.info("Successfully switched GitHub CLI to account: \(username)")
+            let output = try await gitHubCLIService.switchAccount(to: username)
+            Self.logger.info("Successfully switched GitHub CLI to account: \(username). Output: \(output)")
+            lastCLISwitchStatus = .success(username)
         } catch GitHubCLIService.GitHubCLIError.accountNotFound {
-            // Account not in CLI - this is expected if user hasn't logged in with gh
             Self.logger.notice("Account '\(username)' not found in GitHub CLI (run 'gh auth login' to add it)")
+            lastCLISwitchStatus = .accountNotInCLI(username)
         } catch GitHubCLIService.GitHubCLIError.notLoggedIn {
-            // Not logged in to CLI - expected for new users
             Self.logger.notice("Not logged in to GitHub CLI (run 'gh auth login' to enable CLI switching)")
+            lastCLISwitchStatus = .notLoggedIn
         } catch {
-            // Log but don't fail - CLI switching is optional
             Self.logger.error("GitHub CLI switch failed: \(error.localizedDescription)")
+            lastCLISwitchStatus = .failed(error.localizedDescription)
         }
+    }
+
+    /// Clears the CLI switch status (used to dismiss UI banners)
+    func clearCLISwitchStatus() {
+        lastCLISwitchStatus = .none
     }
 
     // MARK: - Persistence
