@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-check:
+    name: Build Check
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Print build environment
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: GitAccountSwitcher
+        run: xcodegen generate
+
+      - name: Build (Debug)
+        working-directory: GitAccountSwitcher
+        run: |
+          xcodebuild build \
+            -project GitAccountSwitcher.xcodeproj \
+            -scheme GitAccountSwitcher \
+            -configuration Debug \
+            -destination 'generic/platform=macOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO

@@ -1,0 +1,284 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'reports/**'
+      - 'docs/**'
+      - '**.md'
+      - '.claude/**'
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # JOB 1: Determine next semantic version from conventional commits
+  # ─────────────────────────────────────────────────────────────
+  version:
+    name: Calculate Next Version
+    runs-on: ubuntu-latest
+    outputs:
+      next: ${{ steps.semver.outputs.next }}
+      nextStrict: ${{ steps.semver.outputs.nextStrict }}
+      bump: ${{ steps.semver.outputs.bump }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next version
+        id: semver
+        uses: ietf-tools/semver-action@v1
+        with:
+          token: ${{ github.token }}
+          branch: main
+          majorList: ''
+          minorList: 'feat, feature'
+          patchList: 'fix, bugfix, perf, refactor, test, tests, chore, docs, style, ci'
+
+      - name: Log version decision
+        run: |
+          echo "Current version: ${{ steps.semver.outputs.current }}"
+          echo "Next version: ${{ steps.semver.outputs.next }}"
+          echo "Bump type: ${{ steps.semver.outputs.bump }}"
+
+  # ─────────────────────────────────────────────────────────────
+  # JOB 2: Build, package, and release
+  # ─────────────────────────────────────────────────────────────
+  build:
+    name: Build and Release macOS App
+    runs-on: macos-14
+    needs: version
+    if: needs.version.outputs.bump != 'none'
+
+    env:
+      SCHEME: GitAccountSwitcher
+      APP_NAME: GitAccountSwitcher
+      APP_DIR: GitAccountSwitcher
+      VERSION: ${{ needs.version.outputs.nextStrict }}
+      TAG: ${{ needs.version.outputs.next }}
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Environment Info ──────────────────────────────────────
+      - name: Print build environment
+        run: |
+          echo "Xcode version:"
+          xcodebuild -version
+          echo "Swift version:"
+          swift --version
+          echo "Building version: $VERSION (tag: $TAG)"
+
+      # ── Bump version in project.yml ───────────────────────────
+      - name: Bump version in project.yml
+        run: |
+          echo "Bumping version to $VERSION (build ${{ github.run_number }})"
+          sed -i '' "s/MARKETING_VERSION: .*/MARKETING_VERSION: $VERSION/" $APP_DIR/project.yml
+          sed -i '' "s/CURRENT_PROJECT_VERSION: .*/CURRENT_PROJECT_VERSION: \"${{ github.run_number }}\"/" $APP_DIR/project.yml
+          echo "Updated project.yml:"
+          grep -E "MARKETING_VERSION|CURRENT_PROJECT_VERSION" $APP_DIR/project.yml
+
+      # ── Install XcodeGen and generate project ─────────────────
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ${{ env.APP_DIR }}
+        run: xcodegen generate
+
+      # ── Build the app ─────────────────────────────────────────
+      - name: Build Release
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          xcodebuild build \
+            -project $SCHEME.xcodeproj \
+            -scheme $SCHEME \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM=""
+
+      - name: Verify built app
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          APP_PATH="build/Build/Products/Release/$APP_NAME.app"
+          echo "App path: $APP_PATH"
+          ls -la "$APP_PATH"
+          echo "Version in built app:"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+            "$APP_PATH/Contents/Info.plist"
+          echo "Build number:"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" \
+            "$APP_PATH/Contents/Info.plist"
+
+      # ── Ad-hoc code sign ──────────────────────────────────────
+      - name: Ad-hoc code sign
+        working-directory: ${{ env.APP_DIR }}
+        run: |
+          codesign --force --deep --sign "-" \
+            "build/Build/Products/Release/$APP_NAME.app"
+          echo "Code signature verified:"
+          codesign -dvv "build/Build/Products/Release/$APP_NAME.app" 2>&1 | head -5
+
+      # ── (OPTIONAL) Developer ID signing ─────────────────────
+      # Uncomment this block when you have a Developer ID certificate.
+      # Required secrets: MACOS_CERTIFICATE, MACOS_CERTIFICATE_PWD,
+      #                   MACOS_CERTIFICATE_NAME, MACOS_CI_KEYCHAIN_PWD
+      #
+      # - name: Import Developer ID certificate
+      #   env:
+      #     MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      #     MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+      #     MACOS_CI_KEYCHAIN_PWD: ${{ secrets.MACOS_CI_KEYCHAIN_PWD }}
+      #   run: |
+      #     echo $MACOS_CERTIFICATE | base64 --decode > certificate.p12
+      #     security create-keychain -p "$MACOS_CI_KEYCHAIN_PWD" build.keychain
+      #     security default-keychain -s build.keychain
+      #     security unlock-keychain -p "$MACOS_CI_KEYCHAIN_PWD" build.keychain
+      #     security set-keychain-settings -lut 21600 build.keychain
+      #     security import certificate.p12 -k build.keychain \
+      #       -P "$MACOS_CERTIFICATE_PWD" -T /usr/bin/codesign
+      #     security set-key-partition-list \
+      #       -S apple-tool:,apple:,codesign: \
+      #       -s -k "$MACOS_CI_KEYCHAIN_PWD" build.keychain
+      #
+      # - name: Sign with Developer ID
+      #   env:
+      #     MACOS_CERTIFICATE_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
+      #   run: |
+      #     codesign --force --deep \
+      #       --sign "$MACOS_CERTIFICATE_NAME" \
+      #       --options runtime \
+      #       --entitlements $APP_DIR/$APP_NAME/GitAccountSwitcher.entitlements \
+      #       "$APP_DIR/build/Build/Products/Release/$APP_NAME.app"
+      #
+      # - name: Cleanup keychain
+      #   if: always()
+      #   run: security delete-keychain build.keychain 2>/dev/null || true
+
+      # ── (OPTIONAL) Notarization ──────────────────────────────
+      # Requires Developer ID signing above + these secrets:
+      # NOTARIZATION_APPLE_ID, NOTARIZATION_PASSWORD, NOTARIZATION_TEAM_ID
+      #
+      # - name: Notarize application
+      #   env:
+      #     NOTARIZATION_APPLE_ID: ${{ secrets.NOTARIZATION_APPLE_ID }}
+      #     NOTARIZATION_PASSWORD: ${{ secrets.NOTARIZATION_PASSWORD }}
+      #     NOTARIZATION_TEAM_ID: ${{ secrets.NOTARIZATION_TEAM_ID }}
+      #   run: |
+      #     xcrun notarytool store-credentials "notarytool-profile" \
+      #       --apple-id "$NOTARIZATION_APPLE_ID" \
+      #       --team-id "$NOTARIZATION_TEAM_ID" \
+      #       --password "$NOTARIZATION_PASSWORD"
+      #     ditto -c -k --keepParent \
+      #       "$APP_DIR/build/Build/Products/Release/$APP_NAME.app" \
+      #       notarize-upload.zip
+      #     xcrun notarytool submit notarize-upload.zip \
+      #       --keychain-profile "notarytool-profile" --wait
+      #     xcrun stapler staple "$APP_DIR/build/Build/Products/Release/$APP_NAME.app"
+      #     rm notarize-upload.zip
+
+      # ── Stage app for packaging ───────────────────────────────
+      - name: Stage app for packaging
+        run: |
+          mkdir -p dist
+          cp -R "$APP_DIR/build/Build/Products/Release/$APP_NAME.app" dist/
+
+      # ── Create DMG ────────────────────────────────────────────
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          mkdir -p dist/dmg-staging
+          cp -R "dist/$APP_NAME.app" dist/dmg-staging/
+
+          create-dmg \
+            --volname "Git Account Switcher $VERSION" \
+            --window-pos 200 120 \
+            --window-size 600 300 \
+            --icon-size 100 \
+            --icon "$APP_NAME.app" 175 120 \
+            --hide-extension "$APP_NAME.app" \
+            --app-drop-link 425 120 \
+            --hdiutil-retries 5 \
+            "dist/$APP_NAME-$VERSION.dmg" \
+            "dist/dmg-staging/" || true
+
+          # Verify DMG was created
+          if [ -f "dist/$APP_NAME-$VERSION.dmg" ]; then
+            echo "DMG created successfully:"
+            ls -lh "dist/$APP_NAME-$VERSION.dmg"
+          else
+            echo "DMG creation failed, falling back to ZIP only"
+          fi
+
+      # ── Create ZIP as fallback artifact ───────────────────────
+      - name: Create ZIP artifact
+        run: |
+          ditto -c -k --keepParent \
+            "dist/$APP_NAME.app" \
+            "dist/$APP_NAME-$VERSION.zip"
+          echo "ZIP created:"
+          ls -lh "dist/$APP_NAME-$VERSION.zip"
+
+      # ── Commit version bump and push tag ──────────────────────
+      - name: Commit version bump and tag release
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add "$APP_DIR/project.yml"
+          git diff --cached --quiet && echo "No changes to commit" || \
+            git commit -m "chore: bump version to $TAG [skip ci]"
+          git tag "$TAG"
+          git push origin main --follow-tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Create GitHub Release ─────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: "Git Account Switcher ${{ env.TAG }}"
+          body: |
+            ## Git Account Switcher ${{ env.TAG }}
+
+            ### Installation
+
+            **Option 1: DMG (Recommended)**
+            1. Download `${{ env.APP_NAME }}-${{ env.VERSION }}.dmg` below
+            2. Open the DMG and drag **Git Account Switcher** to your Applications folder
+            3. **First launch:** Right-click the app → **Open** (bypasses Gatekeeper warning)
+
+            **Option 2: ZIP**
+            1. Download `${{ env.APP_NAME }}-${{ env.VERSION }}.zip` below
+            2. Unzip and move `GitAccountSwitcher.app` to your Applications folder
+            3. **First launch:** Right-click → **Open**, or run:
+               ```
+               xattr -d com.apple.quarantine /Applications/GitAccountSwitcher.app
+               ```
+
+            ### Requirements
+            - macOS 13.0 (Ventura) or later
+
+            ### Note
+            This app is ad-hoc signed (not notarized). On first launch, macOS will show a
+            security warning. Right-click the app and select "Open" to bypass this.
+          draft: false
+          prerelease: false
+          files: |
+            dist/${{ env.APP_NAME }}-${{ env.VERSION }}.dmg
+            dist/${{ env.APP_NAME }}-${{ env.VERSION }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
