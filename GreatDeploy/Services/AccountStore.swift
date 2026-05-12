@@ -36,10 +36,11 @@ final class AccountStore: ObservableObject {
 
     // MARK: - Services
 
-    private let keychainService = KeychainService.shared
-    private let gitConfigService = GitConfigService.shared
-    private let gitHubCLIService = GitHubCLIService.shared
-    private let cloudflareAdapter = CloudflareAdapter.shared
+    private let keychainService: KeychainServicing
+    private let gitConfigService: GitConfigServicing
+    private let gitHubCLIService: GitHubCLIServicing
+    private let cloudflareAdapter: CloudflareAdapting
+    private let userDefaults: UserDefaults
 
     // MARK: - Concurrency Control
 
@@ -51,6 +52,7 @@ final class AccountStore: ObservableObject {
 
     private let accountsStorageKey = "savedAccounts"
     private let migrationCompleteKey = "keychainMigrationComplete_v1"
+    private let syncCloudflareToWranglerConfigKey = "syncCloudflareToWranglerConfig"
 
     // MARK: - Performance Cache
 
@@ -77,8 +79,23 @@ final class AccountStore: ObservableObject {
 
     // MARK: - Initialization
 
-    init() {
+    init(
+        keychainService: KeychainServicing = KeychainService.shared,
+        gitConfigService: GitConfigServicing = GitConfigService.shared,
+        gitHubCLIService: GitHubCLIServicing = GitHubCLIService.shared,
+        cloudflareAdapter: CloudflareAdapting = CloudflareAdapter.shared,
+        userDefaults: UserDefaults = .standard,
+        startServices: Bool = true
+    ) {
+        self.keychainService = keychainService
+        self.gitConfigService = gitConfigService
+        self.gitHubCLIService = gitHubCLIService
+        self.cloudflareAdapter = cloudflareAdapter
+        self.userDefaults = userDefaults
+
         loadAccounts()
+        guard startServices else { return }
+
         Task {
             // Ensure git is configured to use osxkeychain for credential storage
             await ensureGitCredentialHelper()
@@ -86,6 +103,10 @@ final class AccountStore: ObservableObject {
             await restoreActiveAccountCredential()
             await refreshCurrentGitConfig()
         }
+    }
+
+    private var syncCloudflareToWranglerConfig: Bool {
+        userDefaults.bool(forKey: syncCloudflareToWranglerConfigKey)
     }
 
     /// Ensures git credential helper is configured for osxkeychain
@@ -162,7 +183,11 @@ final class AccountStore: ObservableObject {
             }
             if !newAccount.cloudflareApiToken.isEmpty {
                 Task {
-                    try? await cloudflareAdapter.applyToken(newAccount.cloudflareApiToken, accountId: newAccount.cloudflareAccountId)
+                    try? await cloudflareAdapter.applyToken(
+                        newAccount.cloudflareApiToken,
+                        accountId: newAccount.cloudflareAccountId,
+                        syncWranglerConfig: syncCloudflareToWranglerConfig
+                    )
                 }
             }
         }
@@ -239,12 +264,16 @@ final class AccountStore: ObservableObject {
                 if let cfToken = keychainService.readCloudflareToken(accountId: accounts[0].id),
                    !cfToken.isEmpty {
                     Task {
-                        try? await cloudflareAdapter.applyToken(cfToken, accountId: accounts[0].cloudflareAccountId)
+                        try? await cloudflareAdapter.applyToken(
+                            cfToken,
+                            accountId: accounts[0].cloudflareAccountId,
+                            syncWranglerConfig: syncCloudflareToWranglerConfig
+                        )
                     }
                 }
             } else {
                 Task {
-                    try? await cloudflareAdapter.clearCredentials()
+                    try? await cloudflareAdapter.clearCredentials(syncWranglerConfig: syncCloudflareToWranglerConfig)
                 }
             }
         } else {
@@ -302,9 +331,13 @@ final class AccountStore: ObservableObject {
             
             // Rollback Cloudflare credential
             if let cfToken = snapshot.previousCloudflareToken, let cfAccountId = snapshot.previousCloudflareAccountId {
-                try await cloudflareAdapter.applyToken(cfToken, accountId: cfAccountId)
+                try await cloudflareAdapter.applyToken(
+                    cfToken,
+                    accountId: cfAccountId,
+                    syncWranglerConfig: syncCloudflareToWranglerConfig
+                )
             } else {
-                try await cloudflareAdapter.clearCredentials()
+                try await cloudflareAdapter.clearCredentials(syncWranglerConfig: syncCloudflareToWranglerConfig)
             }
 
             // Rollback git config
@@ -377,9 +410,13 @@ final class AccountStore: ObservableObject {
 
                 // Update Cloudflare credentials
                 if !cfToken.isEmpty {
-                    try await cloudflareAdapter.applyToken(cfToken, accountId: account.cloudflareAccountId)
+                    try await cloudflareAdapter.applyToken(
+                        cfToken,
+                        accountId: account.cloudflareAccountId,
+                        syncWranglerConfig: syncCloudflareToWranglerConfig
+                    )
                 } else {
-                    try await cloudflareAdapter.clearCredentials()
+                    try await cloudflareAdapter.clearCredentials(syncWranglerConfig: syncCloudflareToWranglerConfig)
                 }
 
                 // Clear git credential cache to force fresh credential fetch
@@ -476,7 +513,7 @@ final class AccountStore: ObservableObject {
 
         do {
             let data = try encoder.encode(accounts)
-            UserDefaults.standard.set(data, forKey: accountsStorageKey)
+            userDefaults.set(data, forKey: accountsStorageKey)
         } catch {
             // ERROR HANDLING: Sanitized error message (MED-03 fix)
             lastError = AccountStoreError.sanitized("Failed to save accounts")
@@ -485,13 +522,13 @@ final class AccountStore: ObservableObject {
     }
 
     private func loadAccounts() {
-        guard let data = UserDefaults.standard.data(forKey: accountsStorageKey) else {
+        guard let data = userDefaults.data(forKey: accountsStorageKey) else {
             // No saved data is not an error - fresh install
             return
         }
 
         // Check if migration from legacy format (PAT in UserDefaults) is needed
-        let migrationComplete = UserDefaults.standard.bool(forKey: migrationCompleteKey)
+        let migrationComplete = userDefaults.bool(forKey: migrationCompleteKey)
 
         if !migrationComplete {
             migrateFromLegacyStorage(data: data)
@@ -543,7 +580,7 @@ final class AccountStore: ObservableObject {
             saveAccounts()
 
             // Mark migration as complete
-            UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+            userDefaults.set(true, forKey: migrationCompleteKey)
 
             Self.logger.info("Successfully migrated \(legacyAccounts.count) account(s) to Keychain-only storage")
 
@@ -557,7 +594,7 @@ final class AccountStore: ObservableObject {
             do {
                 accounts = try decoder.decode([DevProfile].self, from: data)
                 // Data was already in new format, mark migration complete
-                UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+                userDefaults.set(true, forKey: migrationCompleteKey)
             } catch {
                 Self.logger.error("Failed to decode accounts in any format: \(error)")
                 lastError = AccountStoreError.sanitized("Failed to load accounts")

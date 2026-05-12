@@ -3,7 +3,7 @@ import Security
 import os.log
 
 /// Service for managing GitHub CLI (gh) operations
-final class GitHubCLIService {
+final class GitHubCLIService: GitHubCLIServicing {
 
     // MARK: - Logging
 
@@ -234,7 +234,7 @@ final class GitHubCLIService {
 
         return try await Task.detached(priority: .userInitiated) {
             let output = try self.runGhCommand(path: path, arguments: ["auth", "status"])
-            return self.parseAuthStatusUsernames(from: output)
+            return Self.parseAuthStatusUsernames(from: output)
         }.value
     }
 
@@ -263,7 +263,7 @@ final class GitHubCLIService {
             }
 
             // Find the correct-cased username using case-insensitive matching
-            guard let actualUsername = self.findCorrectCaseUsername(username, in: authStatus) else {
+            guard let actualUsername = Self.findCorrectCaseUsername(username, in: authStatus) else {
                 Self.logger.warning("Account '\(username)' not found in authenticated accounts")
                 Self.logger.debug("Auth status output: \(authStatus)")
                 throw GitHubCLIError.accountNotFound(username)
@@ -321,7 +321,7 @@ final class GitHubCLIService {
     /// Parses gh auth status output to extract authenticated usernames
     /// - Parameter output: The output from `gh auth status`
     /// - Returns: Array of usernames with their original casing preserved
-    private func parseAuthStatusUsernames(from output: String) -> [String] {
+    static func parseAuthStatusUsernames(from output: String) -> [String] {
         // Format: "✓ Logged in to github.com account MinhOmega (keyring)"
         var usernames: [String] = []
         for line in output.components(separatedBy: .newlines) {
@@ -342,7 +342,7 @@ final class GitHubCLIService {
     ///   - username: The username to find (any casing)
     ///   - output: The output from `gh auth status`
     /// - Returns: The correctly-cased username if found, nil otherwise
-    private func findCorrectCaseUsername(_ username: String, in output: String) -> String? {
+    static func findCorrectCaseUsername(_ username: String, in output: String) -> String? {
         let lowercaseTarget = username.lowercased()
         return parseAuthStatusUsernames(from: output).first { $0.lowercased() == lowercaseTarget }
     }

@@ -3,7 +3,7 @@ import Security
 import LocalAuthentication
 
 /// Service for managing GitHub credentials in macOS Keychain
-final class KeychainService {
+final class KeychainService: KeychainServicing {
 
     // MARK: - Errors
 

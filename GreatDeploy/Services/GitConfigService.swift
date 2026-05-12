@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// Service for managing git configuration
-final class GitConfigService {
+final class GitConfigService: GitConfigServicing {
 
     // MARK: - Errors
 

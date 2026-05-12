@@ -1,0 +1,11 @@
+{
+  "name": "GreatDeploy",
+  "description": "Native macOS menu bar application to switch between GitHub accounts",
+  "github": {
+    "account": "tody-agent",
+    "org": "tody-agent",
+    "repo": "GreatDeploy",
+    "remoteUrl": "https://github.com/tody-agent/GreatDeploy.git",
+    "userEmail": "tracuuphat@gmail.com"
+  }
+}

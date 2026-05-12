@@ -9,7 +9,7 @@ final class FrontendSafetyTests: XCTestCase {
         // Instantiate the views to ensure no structural or fatal runtime errors in initialization
         // This is the Swift equivalent of frontend syntax / structure checks
         
-        let accountStore = AccountStore()
+        let accountStore = AccountStore(startServices: false)
         
         // WelcomeView
         let welcomeView = WelcomeView()

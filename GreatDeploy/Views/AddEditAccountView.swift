@@ -144,7 +144,7 @@ struct AddEditAccountView: View {
             // Actions
             actionsView
         }
-        .frame(width: 420, height: 500)
+        .frame(width: 460, height: 700)
         .onAppear(perform: loadExistingAccount)
         .onDisappear {
             // Cancel any in-flight CLI check
@@ -281,30 +281,54 @@ struct AddEditAccountView: View {
 
     private var cloudflareSection: some View {
         Section {
-            TextField("Account ID", text: $cloudflareAccountId)
-                .textFieldStyle(.roundedBorder)
-                .autocorrectionDisabled()
+            HStack {
+                TextField("Account ID", text: $cloudflareAccountId)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                
+                Image(systemName: "questionmark.circle")
+                    .foregroundStyle(.secondary)
+                    .help("Found in the right sidebar of your Cloudflare Dashboard overview page.")
+            }
 
-            SecureField("API Token", text: $cloudflareApiToken)
-                .textFieldStyle(.roundedBorder)
+            HStack {
+                SecureField("API Token", text: $cloudflareApiToken)
+                    .textFieldStyle(.roundedBorder)
+                
+                Image(systemName: "questionmark.circle")
+                    .foregroundStyle(.secondary)
+                    .help("Requires 'Workers Scripts: Edit' and 'Workers Tail: Read' permissions to deploy applications.")
+            }
         } header: {
             Text("Cloudflare Credentials")
         } footer: {
-            Text("Your Cloudflare Account ID and API Token (Optional)")
+            Text("Optional. Needed if you want to deploy Cloudflare Workers or Pages from this profile.")
         }
     }
 
     private var gitConfigSection: some View {
         Section {
-            TextField("Name", text: $gitUserName)
-                .textFieldStyle(.roundedBorder)
+            HStack {
+                TextField("Author Name", text: $gitUserName)
+                    .textFieldStyle(.roundedBorder)
+                
+                Image(systemName: "questionmark.circle")
+                    .foregroundStyle(.secondary)
+                    .help("The name that will appear on your Git commits (e.g., John Doe).")
+            }
 
-            TextField("Email", text: $gitUserEmail)
-                .textFieldStyle(.roundedBorder)
+            HStack {
+                TextField("Author Email", text: $gitUserEmail)
+                    .textFieldStyle(.roundedBorder)
+                
+                Image(systemName: "questionmark.circle")
+                    .foregroundStyle(.secondary)
+                    .help("The email associated with this GitHub account. Crucial for GitHub to link your commits to your profile.")
+            }
         } header: {
-            Text("Git Config")
+            Text("Git Commit Identity")
         } footer: {
-            Text("These values will be set as git config user.name and user.email")
+            Text("Required. When you switch to this profile, your local Git config will be updated so that your work and personal commits are correctly attributed and not mixed up.")
         }
     }
 
