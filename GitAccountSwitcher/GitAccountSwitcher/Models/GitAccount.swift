@@ -6,7 +6,7 @@ struct GitAccount: Identifiable, Equatable, Hashable, Sendable {
     var id: UUID
     var displayName: String       // e.g., "Personal", "Work"
     var githubUsername: String    // GitHub account username
-    var personalAccessToken: String // PAT - NOT serialized, stored in Keychain only
+    var personalAccessToken: String // SECURITY: Transient only — NEVER serialized. Stored in Keychain via KeychainService.
     var gitUserName: String       // git config user.name
     var gitUserEmail: String      // git config user.email
     var isActive: Bool
@@ -46,11 +46,13 @@ struct GitAccount: Identifiable, Equatable, Hashable, Sendable {
     }
 }
 
-// MARK: - Codable (PAT included in local storage)
+// MARK: - Codable (SECURITY: PAT is EXCLUDED from serialization)
 
 extension GitAccount: Codable {
     enum CodingKeys: String, CodingKey {
-        case id, displayName, githubUsername, personalAccessToken
+        // SECURITY: personalAccessToken is intentionally EXCLUDED.
+        // PATs are stored exclusively in the macOS Keychain via KeychainService.
+        case id, displayName, githubUsername
         case gitUserName, gitUserEmail, isActive, createdAt, lastUsedAt
     }
 
@@ -59,7 +61,8 @@ extension GitAccount: Codable {
         id = try container.decode(UUID.self, forKey: .id)
         displayName = try container.decode(String.self, forKey: .displayName)
         githubUsername = try container.decode(String.self, forKey: .githubUsername)
-        personalAccessToken = try container.decode(String.self, forKey: .personalAccessToken)
+        // SECURITY: PAT is never decoded from storage — always loaded from Keychain
+        personalAccessToken = ""
         gitUserName = try container.decode(String.self, forKey: .gitUserName)
         gitUserEmail = try container.decode(String.self, forKey: .gitUserEmail)
         isActive = try container.decode(Bool.self, forKey: .isActive)
@@ -72,12 +75,60 @@ extension GitAccount: Codable {
         try container.encode(id, forKey: .id)
         try container.encode(displayName, forKey: .displayName)
         try container.encode(githubUsername, forKey: .githubUsername)
-        try container.encode(personalAccessToken, forKey: .personalAccessToken)
+        // SECURITY: PAT is NEVER encoded — stored exclusively in Keychain
         try container.encode(gitUserName, forKey: .gitUserName)
         try container.encode(gitUserEmail, forKey: .gitUserEmail)
         try container.encode(isActive, forKey: .isActive)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encodeIfPresent(lastUsedAt, forKey: .lastUsedAt)
+    }
+}
+
+// MARK: - Legacy Migration Support
+
+extension GitAccount {
+    /// CodingKeys that include personalAccessToken for one-time migration from legacy UserDefaults storage.
+    /// Used ONLY during migration — after migration PATs are deleted from UserDefaults.
+    enum LegacyCodingKeys: String, CodingKey {
+        case id, displayName, githubUsername, personalAccessToken
+        case gitUserName, gitUserEmail, isActive, createdAt, lastUsedAt
+    }
+
+    /// Decodes from legacy format that included PAT in UserDefaults.
+    /// Returns the PAT so the caller can migrate it to the Keychain.
+    static func decodeLegacy(from data: Data) throws -> [(account: GitAccount, legacyToken: String)] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        // Try to decode with legacy keys that include PAT
+        let container = try decoder.decode([LegacyAccount].self, from: data)
+        return container.map { legacy in
+            let account = GitAccount(
+                id: legacy.id,
+                displayName: legacy.displayName,
+                githubUsername: legacy.githubUsername,
+                personalAccessToken: "", // Don't keep PAT in model
+                gitUserName: legacy.gitUserName,
+                gitUserEmail: legacy.gitUserEmail,
+                isActive: legacy.isActive,
+                createdAt: legacy.createdAt,
+                lastUsedAt: legacy.lastUsedAt
+            )
+            return (account, legacy.personalAccessToken)
+        }
+    }
+
+    /// Internal struct for decoding legacy data that includes PAT
+    private struct LegacyAccount: Codable {
+        let id: UUID
+        let displayName: String
+        let githubUsername: String
+        let personalAccessToken: String
+        let gitUserName: String
+        let gitUserEmail: String
+        let isActive: Bool
+        let createdAt: Date
+        let lastUsedAt: Date?
     }
 }
 
@@ -96,7 +147,7 @@ extension GitAccount: CustomDebugStringConvertible, CustomStringConvertible {
             id: \(id.uuidString)
             displayName: \(displayName)
             githubUsername: @\(githubUsername)
-            personalAccessToken: [REDACTED]
+            personalAccessToken: [REDACTED — Keychain only]
             gitUserName: \(gitUserName)
             gitUserEmail: \(gitUserEmail)
             isActive: \(isActive)

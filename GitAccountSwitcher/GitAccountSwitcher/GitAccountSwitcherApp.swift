@@ -684,37 +684,50 @@ struct EnhancedAccountCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Enhanced action button
-            Menu {
+            // Enhanced action buttons
+            HStack(spacing: 8) {
                 if !account.isActive {
                     Button(action: { Task { await onSwitch() } }) {
-                        Label("Switch to Account", systemImage: "arrow.triangle.2.circlepath")
+                        Text("Switch")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(LinearGradient(
+                                        colors: [Color(hex: "6366f1"), Color(hex: "8b5cf6")],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    ))
+                            )
+                            .shadow(color: Color(hex: "6366f1").opacity(isHovered ? 0.4 : 0.2), radius: 4, x: 0, y: 2)
                     }
+                    .buttonStyle(.plain)
                     .disabled(isSwitching)
+                    .transition(.scale.combined(with: .opacity))
+                }
+                
+                Menu {
+                    Button(action: { showingEditSheet = true }) {
+                        Label("Edit Account", systemImage: "pencil")
+                    }
 
                     Divider()
-                }
 
-                Button(action: { showingEditSheet = true }) {
-                    Label("Edit Account", systemImage: "pencil")
-                }
-
-                Divider()
-
-                Button(role: .destructive, action: { showingDeleteConfirmation = true }) {
-                    Label("Delete Account", systemImage: "trash")
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .medium))
+                    Button(role: .destructive, action: { showingDeleteConfirmation = true }) {
+                        Label("Delete Account", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
                 }
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
+                .menuIndicator(.hidden)
+                .buttonStyle(.plain)
             }
-            .menuIndicator(.hidden)
-            .buttonStyle(.plain)
         }
         .padding(18)
         .background(cardBackground)
@@ -728,7 +741,12 @@ struct EnhancedAccountCard: View {
         .scaleEffect(cardScale)
         .animation(.spring(duration: 0.3, bounce: 0.3), value: cardScale)
         .animation(.spring(duration: 0.3, bounce: 0.2), value: isHovered)
-        .onTapGesture {}
+        .contentShape(RoundedRectangle(cornerRadius: 14))
+        .onTapGesture {
+            if !account.isActive && !isSwitching {
+                Task { await onSwitch() }
+            }
+        }
         .onLongPressGesture(
             minimumDuration: 0.1,
             maximumDistance: .infinity,
@@ -806,30 +824,32 @@ struct MenuBarContentView: View {
 
             Divider()
 
-            // Enhanced quick switch list
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    ForEach(accountStore.accounts) { account in
-                        EnhancedQuickSwitchRow(
-                            account: account,
-                            isHovered: hoveredAccountId == account.id,
-                            isSwitching: isSwitching
-                        ) {
-                            await switchToAccount(account)
-                        }
-                        .onHover { hovering in
-                            withAnimation(.spring(duration: 0.2)) {
-                                hoveredAccountId = hovering ? account.id : nil
+            if !accountStore.accounts.isEmpty {
+                // Enhanced quick switch list
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(accountStore.accounts) { account in
+                            EnhancedQuickSwitchRow(
+                                account: account,
+                                isHovered: hoveredAccountId == account.id,
+                                isSwitching: isSwitching
+                            ) {
+                                await switchToAccount(account)
+                            }
+                            .onHover { hovering in
+                                withAnimation(.spring(duration: 0.2)) {
+                                    hoveredAccountId = hovering ? account.id : nil
+                                }
                             }
                         }
                     }
+                    .padding(8)
                 }
-                .padding(8)
-            }
-            .frame(maxHeight: 200)
-            .modifier(ConditionalBackground(enableMaterial: enableVisualEffects, material: .regular, fallbackColor: Color.clear))
+                .frame(height: min(CGFloat(accountStore.accounts.count) * 44 + 16, 250))
+                .modifier(ConditionalBackground(enableMaterial: enableVisualEffects, material: .regular, fallbackColor: Color.clear))
 
-            Divider()
+                Divider()
+            }
 
             // Enhanced actions bar
             HStack(spacing: 16) {
@@ -911,7 +931,7 @@ struct EnhancedQuickSwitchRow: View {
             .fill(
                 account.isActive ?
                 Color.green.opacity(0.1) :
-                (isHovered ? Color.white.opacity(0.05) : Color.clear)
+                (isHovered ? Color.primary.opacity(0.06) : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
@@ -927,7 +947,7 @@ struct EnhancedQuickSwitchRow: View {
             HStack(spacing: 12) {
                 // Status indicator with glow effect
                 Circle()
-                    .fill(account.isActive ? Color.green : Color.gray.opacity(0.3))
+                    .fill(account.isActive ? Color.green : Color.gray.opacity(0.4))
                     .frame(width: 8, height: 8)
                     .shadow(
                         color: account.isActive ? .green.opacity(0.6) : .clear,
@@ -937,8 +957,8 @@ struct EnhancedQuickSwitchRow: View {
                     .animation(.spring(duration: 0.2), value: isHovered)
 
                 Text(account.displayName)
-                    .font(.system(size: 12, weight: account.isActive ? .semibold : .regular))
-                    .foregroundStyle(account.isActive ? .primary : .secondary)
+                    .font(.system(size: 13, weight: account.isActive ? .semibold : .medium))
+                    .foregroundStyle(account.isActive ? Color.primary : Color.primary.opacity(0.8))
 
                 Spacer()
 

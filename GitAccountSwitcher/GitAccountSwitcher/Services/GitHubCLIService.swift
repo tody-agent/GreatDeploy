@@ -118,8 +118,9 @@ final class GitHubCLIService {
 
         do {
             try process.run()
-            process.waitUntilExit()
-            if process.terminationStatus == 0 {
+            // SECURITY: Timeout to prevent indefinite hangs (MED-01 fix)
+            let completed = process.waitUntilExitOrTimeout(seconds: 5)
+            if completed && process.terminationStatus == 0 {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 let output = String(data: data, encoding: .utf8) ?? ""
                 if output.contains("gh version") {
@@ -144,8 +145,9 @@ final class GitHubCLIService {
 
         do {
             try process.run()
-            process.waitUntilExit()
-            if process.terminationStatus == 0 {
+            // SECURITY: Timeout to prevent indefinite hangs (MED-01 fix)
+            let completed = process.waitUntilExitOrTimeout(seconds: 5)
+            if completed && process.terminationStatus == 0 {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -215,8 +217,9 @@ final class GitHubCLIService {
 
             do {
                 try process.run()
-                process.waitUntilExit()
-                return process.terminationStatus == 0
+                // SECURITY: Timeout to prevent indefinite hangs (MED-01 fix)
+                let completed = process.waitUntilExitOrTimeout(seconds: 10)
+                return completed && process.terminationStatus == 0
             } catch {
                 return false
             }
@@ -369,7 +372,12 @@ final class GitHubCLIService {
             throw GitHubCLIError.cliNotInstalled
         }
 
-        process.waitUntilExit()
+        // SECURITY: Timeout to prevent indefinite hangs (MED-01 fix)
+        let completed = process.waitUntilExitOrTimeout(seconds: 15)
+        if !completed {
+            process.terminate()
+            throw GitHubCLIError.commandFailed("GitHub CLI operation timed out")
+        }
 
         let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
         let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()

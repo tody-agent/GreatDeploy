@@ -120,8 +120,9 @@ final class GitConfigService {
 
         do {
             try process.run()
-            process.waitUntilExit()
-            if process.terminationStatus == 0 {
+            // SECURITY: Timeout to prevent indefinite hangs (MED-01 fix)
+            let completed = process.waitUntilExitOrTimeout(seconds: 5)
+            if completed && process.terminationStatus == 0 {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -249,10 +250,13 @@ final class GitConfigService {
 
         do {
             try process.run()
-            process.waitUntilExit()
+            // SECURITY: Timeout to prevent indefinite hangs (MED-01 fix)
+            let completed = process.waitUntilExitOrTimeout(seconds: 5)
+            if !completed {
+                process.terminate()
+            }
         } catch {
             // Ignore errors - cache might not be running
-            print("Note: credential-cache not active (this is normal)")
         }
     }
 
@@ -327,7 +331,12 @@ final class GitConfigService {
             throw GitConfigError.gitNotFound
         }
 
-        process.waitUntilExit()
+        // SECURITY: Use timeout to prevent indefinite hangs (MED-01 fix)
+        let completed = process.waitUntilExitOrTimeout(seconds: 10)
+        if !completed {
+            process.terminate()
+            throw GitConfigError.commandFailed("Git operation timed out")
+        }
 
         let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
         let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()

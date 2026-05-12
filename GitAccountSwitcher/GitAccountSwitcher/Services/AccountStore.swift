@@ -49,6 +49,7 @@ final class AccountStore: ObservableObject {
     // MARK: - Storage Keys
 
     private let accountsStorageKey = "savedAccounts"
+    private let migrationCompleteKey = "keychainMigrationComplete_v1"
 
     // MARK: - Performance Cache
 
@@ -106,17 +107,18 @@ final class AccountStore: ObservableObject {
             return
         }
 
-        // Restore credential from stored token
-        guard !active.personalAccessToken.isEmpty else { return }
+        // SECURITY: Read PAT from per-account Keychain storage (not from model)
+        guard let token = keychainService.readAccountToken(accountId: active.id),
+              !token.isEmpty else { return }
 
         do {
             try keychainService.updateGitHubCredential(
                 username: active.githubUsername,
-                token: active.personalAccessToken
+                token: token
             )
         } catch {
             // Log error but don't fail - credential will be restored on next switch
-            lastError = error
+            lastError = AccountStoreError.sanitized("Could not restore credential")
         }
     }
 
@@ -131,17 +133,29 @@ final class AccountStore: ObservableObject {
 
         var newAccount = account
 
-        // If this is the first account, make it active and update Keychain
-        if accounts.isEmpty {
-            newAccount.isActive = true
-            // Set as THE github.com credential in Keychain
-            try keychainService.updateGitHubCredential(
-                username: newAccount.githubUsername,
+        // SECURITY: Save PAT to per-account Keychain storage
+        if !newAccount.personalAccessToken.isEmpty {
+            try keychainService.saveAccountToken(
+                accountId: newAccount.id,
                 token: newAccount.personalAccessToken
             )
         }
 
-        // PAT is stored in the model itself (UserDefaults)
+        // If this is the first account, make it active and update git credential
+        if accounts.isEmpty {
+            newAccount.isActive = true
+            // Set as THE github.com credential in Keychain for git credential helper
+            if !newAccount.personalAccessToken.isEmpty {
+                try keychainService.updateGitHubCredential(
+                    username: newAccount.githubUsername,
+                    token: newAccount.personalAccessToken
+                )
+            }
+        }
+
+        // Clear PAT from in-memory model before persisting
+        // (PAT is now safely in Keychain — no need to keep it in the model)
+        newAccount.personalAccessToken = ""
         accounts.append(newAccount)
         saveAccounts()
     }
@@ -152,22 +166,35 @@ final class AccountStore: ObservableObject {
             return
         }
 
-        // Update account in array (PAT is included in model)
-        accounts[index] = account
+        // SECURITY: Update PAT in per-account Keychain storage
+        if !account.personalAccessToken.isEmpty {
+            try keychainService.saveAccountToken(
+                accountId: account.id,
+                token: account.personalAccessToken
+            )
+        }
 
         // If this is the active account, update THE github.com Keychain entry
-        if account.isActive {
+        if account.isActive && !account.personalAccessToken.isEmpty {
             try keychainService.updateGitHubCredential(
                 username: account.githubUsername,
                 token: account.personalAccessToken
             )
         }
 
+        // Clear PAT from model before persisting
+        var cleanAccount = account
+        cleanAccount.personalAccessToken = ""
+        accounts[index] = cleanAccount
+
         saveAccounts()
     }
 
     /// Removes an account from the store
     func removeAccount(_ account: GitAccount) throws {
+        // SECURITY: Delete PAT from per-account Keychain storage
+        try? keychainService.deleteAccountToken(accountId: account.id)
+
         // If deleting the active account, clear THE github.com Keychain entry
         if account.isActive {
             try? keychainService.deleteGitHubCredential()
@@ -177,11 +204,14 @@ final class AccountStore: ObservableObject {
             if !accounts.isEmpty {
                 accounts[0].isActive = true
                 accounts[0].lastUsedAt = Date()
-                // Update Keychain with new active account
-                try keychainService.updateGitHubCredential(
-                    username: accounts[0].githubUsername,
-                    token: accounts[0].personalAccessToken
-                )
+                // Read the new active account's PAT from Keychain and set as git credential
+                if let token = keychainService.readAccountToken(accountId: accounts[0].id),
+                   !token.isEmpty {
+                    try keychainService.updateGitHubCredential(
+                        username: accounts[0].githubUsername,
+                        token: token
+                    )
+                }
             }
         } else {
             // Just remove non-active account
@@ -246,7 +276,7 @@ final class AccountStore: ObservableObject {
             // ERROR HANDLING: Rollback failed - log error but don't throw
             // System is now in inconsistent state and may require manual intervention
             Self.logger.critical("Failed to rollback account switch: \(error.localizedDescription)")
-            lastError = AccountStoreError.persistenceError("Failed to rollback account switch: \(error.localizedDescription)")
+            lastError = AccountStoreError.sanitized("Failed to rollback account switch")
         }
     }
 
@@ -270,13 +300,13 @@ final class AccountStore: ObservableObject {
 
             // RELIABILITY: Capture current state for rollback
             guard let snapshot = try? await captureCurrentState() else {
-                throw AccountStoreError.persistenceError("Failed to capture current state")
+                throw AccountStoreError.sanitized("Failed to capture current state")
             }
 
             do {
-                // Get token directly from account model (stored in local storage)
-                let token = account.personalAccessToken
-                guard !token.isEmpty else {
+                // SECURITY: Read PAT from per-account Keychain (not from model)
+                guard let token = keychainService.readAccountToken(accountId: account.id),
+                      !token.isEmpty else {
                     throw AccountStoreError.tokenNotFound
                 }
 
@@ -364,7 +394,7 @@ final class AccountStore: ObservableObject {
             lastCLISwitchStatus = .notLoggedIn
         } catch {
             Self.logger.error("GitHub CLI switch failed: \(error.localizedDescription)")
-            lastCLISwitchStatus = .failed(error.localizedDescription)
+            lastCLISwitchStatus = .failed("GitHub CLI switch failed")
         }
     }
 
@@ -383,8 +413,8 @@ final class AccountStore: ObservableObject {
             let data = try encoder.encode(accounts)
             UserDefaults.standard.set(data, forKey: accountsStorageKey)
         } catch {
-            // ERROR HANDLING: Log encoding failure and set lastError for UI feedback
-            lastError = AccountStoreError.persistenceError("Failed to save accounts: \(error.localizedDescription)")
+            // ERROR HANDLING: Sanitized error message (MED-03 fix)
+            lastError = AccountStoreError.sanitized("Failed to save accounts")
             Self.logger.error("Failed to encode accounts for persistence: \(error)")
         }
     }
@@ -395,16 +425,76 @@ final class AccountStore: ObservableObject {
             return
         }
 
+        // Check if migration from legacy format (PAT in UserDefaults) is needed
+        let migrationComplete = UserDefaults.standard.bool(forKey: migrationCompleteKey)
+
+        if !migrationComplete {
+            migrateFromLegacyStorage(data: data)
+            return
+        }
+
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
         do {
             accounts = try decoder.decode([GitAccount].self, from: data)
         } catch {
-            // ERROR HANDLING: Log decoding failure but don't crash - start with empty state
-            lastError = AccountStoreError.persistenceError("Failed to load accounts: \(error.localizedDescription)")
+            // ERROR HANDLING: Sanitized error message (MED-03 fix)
+            lastError = AccountStoreError.sanitized("Failed to load accounts")
             Self.logger.error("Failed to decode saved accounts: \(error)")
             accounts = []
+        }
+    }
+
+    /// Migrates legacy accounts that had PATs stored in UserDefaults to Keychain-only storage.
+    /// This runs once on upgrade and then sets a flag so it never runs again.
+    private func migrateFromLegacyStorage(data: Data) {
+        Self.logger.info("Starting one-time migration of PATs from UserDefaults to Keychain...")
+
+        do {
+            // Try to decode using legacy format that includes PAT
+            let legacyAccounts = try GitAccount.decodeLegacy(from: data)
+            var migratedAccounts: [GitAccount] = []
+
+            for (account, legacyToken) in legacyAccounts {
+                // Save each PAT to per-account Keychain storage
+                if !legacyToken.isEmpty {
+                    try keychainService.saveAccountToken(
+                        accountId: account.id,
+                        token: legacyToken
+                    )
+                    Self.logger.info("Migrated PAT for account: \(account.githubUsername)")
+                }
+                migratedAccounts.append(account)
+            }
+
+            // Update in-memory accounts
+            accounts = migratedAccounts
+
+            // Re-save WITHOUT PATs (using the new Codable that excludes PAT)
+            saveAccounts()
+
+            // Mark migration as complete
+            UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+
+            Self.logger.info("Successfully migrated \(legacyAccounts.count) account(s) to Keychain-only storage")
+
+        } catch {
+            // Migration failed — try loading with new format as fallback
+            Self.logger.warning("Legacy migration failed, trying new format: \(error)")
+
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+
+            do {
+                accounts = try decoder.decode([GitAccount].self, from: data)
+                // Data was already in new format, mark migration complete
+                UserDefaults.standard.set(true, forKey: migrationCompleteKey)
+            } catch {
+                Self.logger.error("Failed to decode accounts in any format: \(error)")
+                lastError = AccountStoreError.sanitized("Failed to load accounts")
+                accounts = []
+            }
         }
     }
 
@@ -414,7 +504,8 @@ final class AccountStore: ObservableObject {
         case tokenNotFound
         case accountNotFound
         case duplicateAccount(String)
-        case persistenceError(String)
+        /// SECURITY: Sanitized error message that does not leak internal details (MED-03 fix)
+        case sanitized(String)
 
         var errorDescription: String? {
             switch self {
@@ -424,7 +515,7 @@ final class AccountStore: ObservableObject {
                 return "Account not found"
             case .duplicateAccount(let username):
                 return "An account with GitHub username '\(username)' already exists"
-            case .persistenceError(let message):
+            case .sanitized(let message):
                 return message
             }
         }

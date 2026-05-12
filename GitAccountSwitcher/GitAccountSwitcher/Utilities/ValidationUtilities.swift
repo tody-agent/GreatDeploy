@@ -36,7 +36,10 @@ enum ValidationUtilities {
     /// - Returns: True if username is valid
     static func isValidGitHubUsername(_ username: String) -> Bool {
         let githubRegex = #"^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$"#
-        return username.range(of: githubRegex, options: .regularExpression) != nil
+        if username.range(of: githubRegex, options: .regularExpression) != nil {
+            return true
+        }
+        return isValidEmail(username)
     }
 
     // MARK: - GitHub Token Validation
@@ -239,7 +242,7 @@ enum ValidationUtilities {
             case .invalidEmail:
                 return "Invalid email format"
             case .invalidGitHubUsername:
-                return "Invalid GitHub username format (alphanumeric, hyphens only, max 39 chars)"
+                return "Invalid GitHub username format (alphanumeric, hyphens only, max 39 chars, or valid email)"
             case .invalidToken:
                 return "Invalid Personal Access Token format"
             case .invalidConfigKey:

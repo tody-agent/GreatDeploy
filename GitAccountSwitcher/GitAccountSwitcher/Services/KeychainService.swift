@@ -14,6 +14,7 @@ final class KeychainService {
         case invalidData
         case encodingFailed
         case biometricAuthFailed(String)
+        case processTimeout
 
         var errorDescription: String? {
             switch self {
@@ -32,6 +33,8 @@ final class KeychainService {
                 return "Failed to encode data"
             case .biometricAuthFailed(let message):
                 return "Biometric authentication failed: \(message)"
+            case .processTimeout:
+                return "Git credential operation timed out"
             }
         }
     }
@@ -39,6 +42,13 @@ final class KeychainService {
     // MARK: - Constants
 
     private let githubServer = "github.com"
+
+    /// Service name for per-account PAT storage in Keychain
+    /// Uses kSecClassGenericPassword to avoid conflicts with git credential helper entries
+    private let accountTokenService = "com.gitaccountswitcher.account-tokens"
+
+    /// Default timeout for external process execution (seconds)
+    private let processTimeoutSeconds: TimeInterval = 10
 
     // MARK: - Singleton
 
@@ -271,6 +281,7 @@ final class KeychainService {
     }
 
     /// Runs a git credential-osxkeychain command with the given action and input
+    /// SECURITY: Includes process timeout to prevent indefinite hangs
     private func runGitCredentialCommand(action: String, input: String) throws {
         let process = Process()
         let inputPipe = Pipe()
@@ -305,7 +316,12 @@ final class KeychainService {
                 try? inputPipe.fileHandleForWriting.close()
             }
 
-            process.waitUntilExit()
+            // SECURITY: Use timeout to prevent indefinite hangs (MED-01 fix)
+            let waitResult = process.waitUntilExitOrTimeout(seconds: processTimeoutSeconds)
+            if !waitResult {
+                process.terminate()
+                throw KeychainError.processTimeout
+            }
 
             guard process.terminationStatus == 0 else {
                 throw KeychainError.unexpectedStatus(OSStatus(process.terminationStatus))
@@ -367,10 +383,118 @@ final class KeychainService {
         let status = SecItemCopyMatching(query as CFDictionary, nil)
         return status == errSecSuccess
     }
+
+    // MARK: - Per-Account Token Storage (Keychain-only)
+    //
+    // SECURITY: Each account's PAT is stored as a separate kSecClassGenericPassword
+    // entry in the Keychain, keyed by the account's UUID. This ensures:
+    // 1. PATs are NEVER written to UserDefaults
+    // 2. Each account's token is independently secured by the Keychain
+    // 3. Tokens are protected by the user's login keychain password
+
+    /// Saves a PAT for a specific account in the Keychain
+    /// - Parameters:
+    ///   - accountId: The account's UUID
+    ///   - token: The Personal Access Token to store
+    func saveAccountToken(accountId: UUID, token: String) throws {
+        guard let tokenData = token.data(using: .utf8) else {
+            throw KeychainError.encodingFailed
+        }
+
+        let accountKey = accountId.uuidString
+
+        // Delete any existing entry first
+        try? deleteAccountToken(accountId: accountId)
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: accountTokenService,
+            kSecAttrAccount as String: accountKey,
+            kSecValueData as String: tokenData,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+
+        if status == errSecDuplicateItem {
+            // Update existing
+            let searchQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: accountTokenService,
+                kSecAttrAccount as String: accountKey
+            ]
+            let attrs: [String: Any] = [
+                kSecValueData as String: tokenData
+            ]
+            let updateStatus = SecItemUpdate(searchQuery as CFDictionary, attrs as CFDictionary)
+            guard updateStatus == errSecSuccess else {
+                throw KeychainError.unexpectedStatus(updateStatus)
+            }
+        } else if status != errSecSuccess {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    /// Reads the PAT for a specific account from the Keychain
+    /// - Parameter accountId: The account's UUID
+    /// - Returns: The stored PAT, or nil if not found
+    func readAccountToken(accountId: UUID) -> String? {
+        let accountKey = accountId.uuidString
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: accountTokenService,
+            kSecAttrAccount as String: accountKey,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnData as String: true
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let tokenData = result as? Data,
+              let token = String(data: tokenData, encoding: .utf8) else {
+            return nil
+        }
+
+        return token
+    }
+
+    /// Deletes the PAT for a specific account from the Keychain
+    /// - Parameter accountId: The account's UUID
+    func deleteAccountToken(accountId: UUID) throws {
+        let accountKey = accountId.uuidString
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: accountTokenService,
+            kSecAttrAccount as String: accountKey
+        ]
+
+        let status = SecItemDelete(query as CFDictionary)
+        // Ignore "not found" — it's fine if there's nothing to delete
+        if status != errSecSuccess && status != errSecItemNotFound {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
 }
 
-// MARK: - App-specific Keychain Storage (DEPRECATED - PATs now stored in UserDefaults)
-//
-// This code is kept for reference but is NO LONGER USED.
-// PATs are now stored directly in the GitAccount model (saved to UserDefaults).
-// Only ONE github.com Keychain entry is maintained and updated on account switch.
+// MARK: - Process Timeout Extension
+
+extension Process {
+    /// Waits for the process to exit with a timeout.
+    /// - Parameter seconds: Maximum time to wait in seconds
+    /// - Returns: true if the process exited within the timeout, false if it timed out
+    func waitUntilExitOrTimeout(seconds: TimeInterval) -> Bool {
+        let semaphore = DispatchSemaphore(value: 0)
+
+        // Use terminationHandler to signal completion
+        self.terminationHandler = { _ in
+            semaphore.signal()
+        }
+
+        let result = semaphore.wait(timeout: .now() + seconds)
+        return result == .success
+    }
+}

@@ -60,7 +60,7 @@ struct AddEditAccountView: View {
             case .invalidEmail:
                 return "Invalid email format"
             case .invalidGitHubUsername:
-                return "Invalid GitHub username format (alphanumeric, hyphens only, max 39 chars)"
+                return "Invalid GitHub username format (alphanumeric, hyphens only, max 39 chars, or valid email)"
             case .invalidToken:
                 return "Invalid Personal Access Token format"
             }
@@ -403,7 +403,7 @@ struct AddEditAccountView: View {
         guard displayName.count <= 100 else {
             throw ValidationError.inputTooLong("Display name")
         }
-        guard githubUsername.count <= 39 else {  // GitHub's max username length
+        guard githubUsername.count <= 254 else {  // GitHub's max username length or Email length
             throw ValidationError.inputTooLong("GitHub username")
         }
         guard gitUserName.count <= 200 else {
@@ -474,10 +474,11 @@ struct AddEditAccountView: View {
         githubUsername = account.githubUsername
         gitUserName = account.gitUserName
         gitUserEmail = account.gitUserEmail
-        // Load token directly from account model (stored in local storage)
-        personalAccessToken = account.personalAccessToken
+        // SECURITY: Load token from Keychain (never from model or UserDefaults)
+        let storedToken = KeychainService.shared.readAccountToken(accountId: account.id) ?? ""
+        personalAccessToken = storedToken
         // Save original token to allow unchanged token in validation
-        originalToken = account.personalAccessToken
+        originalToken = storedToken
     }
 
     private func save() {
