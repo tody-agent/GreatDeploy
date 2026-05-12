@@ -45,7 +45,10 @@ final class KeychainService {
 
     /// Service name for per-account PAT storage in Keychain
     /// Uses kSecClassGenericPassword to avoid conflicts with git credential helper entries
-    private let accountTokenService = "com.gitaccountswitcher.account-tokens"
+    private let accountTokenService = "com.greatdeploy.account-tokens"
+    
+    /// Service name for Cloudflare API Token storage
+    private let cloudflareTokenService = "com.greatdeploy.cloudflare-tokens"
 
     /// Default timeout for external process execution (seconds)
     private let processTimeoutSeconds: TimeInterval = 10
@@ -469,6 +472,95 @@ final class KeychainService {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: accountTokenService,
+            kSecAttrAccount as String: accountKey
+        ]
+
+        let status = SecItemDelete(query as CFDictionary)
+        // Ignore "not found" — it's fine if there's nothing to delete
+        if status != errSecSuccess && status != errSecItemNotFound {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    // MARK: - Per-Account Cloudflare Token Storage (Keychain-only)
+
+    /// Saves a Cloudflare API Token for a specific account in the Keychain
+    /// - Parameters:
+    ///   - accountId: The account's UUID
+    ///   - token: The Cloudflare API Token to store
+    func saveCloudflareToken(accountId: UUID, token: String) throws {
+        guard let tokenData = token.data(using: .utf8) else {
+            throw KeychainError.encodingFailed
+        }
+
+        let accountKey = accountId.uuidString
+
+        // Delete any existing entry first
+        try? deleteCloudflareToken(accountId: accountId)
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: cloudflareTokenService,
+            kSecAttrAccount as String: accountKey,
+            kSecValueData as String: tokenData,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+
+        if status == errSecDuplicateItem {
+            // Update existing
+            let searchQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: cloudflareTokenService,
+                kSecAttrAccount as String: accountKey
+            ]
+            let attrs: [String: Any] = [
+                kSecValueData as String: tokenData
+            ]
+            let updateStatus = SecItemUpdate(searchQuery as CFDictionary, attrs as CFDictionary)
+            guard updateStatus == errSecSuccess else {
+                throw KeychainError.unexpectedStatus(updateStatus)
+            }
+        } else if status != errSecSuccess {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    /// Reads the Cloudflare API Token for a specific account from the Keychain
+    /// - Parameter accountId: The account's UUID
+    /// - Returns: The stored Cloudflare API Token, or nil if not found
+    func readCloudflareToken(accountId: UUID) -> String? {
+        let accountKey = accountId.uuidString
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: cloudflareTokenService,
+            kSecAttrAccount as String: accountKey,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnData as String: true
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let tokenData = result as? Data,
+              let token = String(data: tokenData, encoding: .utf8) else {
+            return nil
+        }
+
+        return token
+    }
+
+    /// Deletes the Cloudflare API Token for a specific account from the Keychain
+    /// - Parameter accountId: The account's UUID
+    func deleteCloudflareToken(accountId: UUID) throws {
+        let accountKey = accountId.uuidString
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: cloudflareTokenService,
             kSecAttrAccount as String: accountKey
         ]
 

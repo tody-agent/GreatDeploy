@@ -8,11 +8,11 @@ final class AccountStore: ObservableObject {
 
     // MARK: - Logging
 
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "GitAccountSwitcher", category: "AccountStore")
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "GreatDeploy", category: "AccountStore")
 
     // MARK: - Published Properties
 
-    @Published private(set) var accounts: [GitAccount] = [] {
+    @Published private(set) var accounts: [DevProfile] = [] {
         didSet {
             // PERFORMANCE: Invalidate active account cache when accounts array changes
             _cachedActiveAccount = nil
@@ -39,6 +39,7 @@ final class AccountStore: ObservableObject {
     private let keychainService = KeychainService.shared
     private let gitConfigService = GitConfigService.shared
     private let gitHubCLIService = GitHubCLIService.shared
+    private let cloudflareAdapter = CloudflareAdapter.shared
 
     // MARK: - Concurrency Control
 
@@ -55,11 +56,11 @@ final class AccountStore: ObservableObject {
 
     /// Cache for active account lookup to avoid O(n) search on every access
     /// Invalidated automatically via accounts.didSet
-    private var _cachedActiveAccount: GitAccount?
+    private var _cachedActiveAccount: DevProfile?
 
     // MARK: - Computed Properties
 
-    var activeAccount: GitAccount? {
+    var activeAccount: DevProfile? {
         // PERFORMANCE: Cache active account lookup for O(1) access
         if let cached = _cachedActiveAccount {
             return cached
@@ -125,7 +126,7 @@ final class AccountStore: ObservableObject {
     // MARK: - Account Management
 
     /// Adds a new account to the store
-    func addAccount(_ account: GitAccount) throws {
+    func addAccount(_ account: DevProfile) throws {
         // Check for duplicate GitHub username
         if accounts.contains(where: { $0.githubUsername.lowercased() == account.githubUsername.lowercased() }) {
             throw AccountStoreError.duplicateAccount(account.githubUsername)
@@ -141,6 +142,14 @@ final class AccountStore: ObservableObject {
             )
         }
 
+        // SECURITY: Save Cloudflare Token to per-account Keychain storage
+        if !newAccount.cloudflareApiToken.isEmpty {
+            try keychainService.saveCloudflareToken(
+                accountId: newAccount.id,
+                token: newAccount.cloudflareApiToken
+            )
+        }
+
         // If this is the first account, make it active and update git credential
         if accounts.isEmpty {
             newAccount.isActive = true
@@ -151,17 +160,23 @@ final class AccountStore: ObservableObject {
                     token: newAccount.personalAccessToken
                 )
             }
+            if !newAccount.cloudflareApiToken.isEmpty {
+                Task {
+                    try? await cloudflareAdapter.applyToken(newAccount.cloudflareApiToken, accountId: newAccount.cloudflareAccountId)
+                }
+            }
         }
 
-        // Clear PAT from in-memory model before persisting
-        // (PAT is now safely in Keychain — no need to keep it in the model)
+        // Clear PAT and Cloudflare API Token from in-memory model before persisting
+        // (Secrets are now safely in Keychain — no need to keep it in the model)
         newAccount.personalAccessToken = ""
+        newAccount.cloudflareApiToken = ""
         accounts.append(newAccount)
         saveAccounts()
     }
 
     /// Updates an existing account
-    func updateAccount(_ account: GitAccount) throws {
+    func updateAccount(_ account: DevProfile) throws {
         guard let index = accounts.firstIndex(where: { $0.id == account.id }) else {
             return
         }
@@ -171,6 +186,14 @@ final class AccountStore: ObservableObject {
             try keychainService.saveAccountToken(
                 accountId: account.id,
                 token: account.personalAccessToken
+            )
+        }
+
+        // SECURITY: Update Cloudflare Token in per-account Keychain storage
+        if !account.cloudflareApiToken.isEmpty {
+            try keychainService.saveCloudflareToken(
+                accountId: account.id,
+                token: account.cloudflareApiToken
             )
         }
 
@@ -191,9 +214,10 @@ final class AccountStore: ObservableObject {
     }
 
     /// Removes an account from the store
-    func removeAccount(_ account: GitAccount) throws {
-        // SECURITY: Delete PAT from per-account Keychain storage
+    func removeAccount(_ account: DevProfile) throws {
+        // SECURITY: Delete PAT and Cloudflare token from per-account Keychain storage
         try? keychainService.deleteAccountToken(accountId: account.id)
+        try? keychainService.deleteCloudflareToken(accountId: account.id)
 
         // If deleting the active account, clear THE github.com Keychain entry
         if account.isActive {
@@ -204,13 +228,23 @@ final class AccountStore: ObservableObject {
             if !accounts.isEmpty {
                 accounts[0].isActive = true
                 accounts[0].lastUsedAt = Date()
-                // Read the new active account's PAT from Keychain and set as git credential
+                // Read the new active account's tokens from Keychain and set as credentials
                 if let token = keychainService.readAccountToken(accountId: accounts[0].id),
                    !token.isEmpty {
                     try keychainService.updateGitHubCredential(
                         username: accounts[0].githubUsername,
                         token: token
                     )
+                }
+                if let cfToken = keychainService.readCloudflareToken(accountId: accounts[0].id),
+                   !cfToken.isEmpty {
+                    Task {
+                        try? await cloudflareAdapter.applyToken(cfToken, accountId: accounts[0].cloudflareAccountId)
+                    }
+                }
+            } else {
+                Task {
+                    try? await cloudflareAdapter.clearCredentials()
                 }
             }
         } else {
@@ -226,6 +260,8 @@ final class AccountStore: ObservableObject {
     /// Captures current system state for transaction rollback
     private struct AccountSwitchSnapshot {
         let previousGitHubCredential: (username: String, token: String)?
+        let previousCloudflareToken: String?
+        let previousCloudflareAccountId: String?
         let previousGitConfig: (name: String?, email: String?)
         let previousActiveAccountId: UUID?
     }
@@ -233,11 +269,21 @@ final class AccountStore: ObservableObject {
     /// Captures current state before account switch for rollback capability
     private func captureCurrentState() async throws -> AccountSwitchSnapshot {
         let previousCredential = try? keychainService.readGitHubCredential()
+        
+        var prevCfToken: String? = nil
+        var prevCfAccountId: String? = nil
+        if let active = activeAccount {
+            prevCfToken = keychainService.readCloudflareToken(accountId: active.id)
+            prevCfAccountId = active.cloudflareAccountId
+        }
+
         let previousConfig = try await gitConfigService.getCurrentConfigAsync()
         let previousActiveId = activeAccount?.id
 
         return AccountSwitchSnapshot(
             previousGitHubCredential: previousCredential,
+            previousCloudflareToken: prevCfToken,
+            previousCloudflareAccountId: prevCfAccountId,
             previousGitConfig: previousConfig,
             previousActiveAccountId: previousActiveId
         )
@@ -252,6 +298,13 @@ final class AccountStore: ObservableObject {
                     username: credential.username,
                     token: credential.token
                 )
+            }
+            
+            // Rollback Cloudflare credential
+            if let cfToken = snapshot.previousCloudflareToken, let cfAccountId = snapshot.previousCloudflareAccountId {
+                try await cloudflareAdapter.applyToken(cfToken, accountId: cfAccountId)
+            } else {
+                try await cloudflareAdapter.clearCredentials()
             }
 
             // Rollback git config
@@ -283,7 +336,7 @@ final class AccountStore: ObservableObject {
     /// Switches to the specified account
     /// Uses task-based serialization to ensure only one switch operation runs at a time
     /// RELIABILITY: Implements transaction pattern with automatic rollback on failure
-    func switchToAccount(_ account: GitAccount) async throws {
+    func switchToAccount(_ account: DevProfile) async throws {
 
         // Wait for any in-flight switch operation to complete
         // This provides proper serialization following Apple's concurrency best practices
@@ -304,18 +357,30 @@ final class AccountStore: ObservableObject {
             }
 
             do {
-                // SECURITY: Read PAT from per-account Keychain (not from model)
-                guard let token = keychainService.readAccountToken(accountId: account.id),
-                      !token.isEmpty else {
+                // SECURITY: Read PAT and Cloudflare Token from per-account Keychain
+                let token = keychainService.readAccountToken(accountId: account.id) ?? ""
+                let cfToken = keychainService.readCloudflareToken(accountId: account.id) ?? ""
+
+                if token.isEmpty && cfToken.isEmpty {
                     throw AccountStoreError.tokenNotFound
                 }
 
                 // Update THE SINGLE GitHub Keychain credential entry
-                // This updates both username and password in one operation
-                try keychainService.updateGitHubCredential(
-                    username: account.githubUsername,
-                    token: token
-                )
+                if !token.isEmpty {
+                    try keychainService.updateGitHubCredential(
+                        username: account.githubUsername,
+                        token: token
+                    )
+                } else {
+                    try? keychainService.deleteGitHubCredential()
+                }
+
+                // Update Cloudflare credentials
+                if !cfToken.isEmpty {
+                    try await cloudflareAdapter.applyToken(cfToken, accountId: account.cloudflareAccountId)
+                } else {
+                    try await cloudflareAdapter.clearCredentials()
+                }
 
                 // Clear git credential cache to force fresh credential fetch
                 // This prevents using cached credentials from previous account
@@ -437,7 +502,7 @@ final class AccountStore: ObservableObject {
         decoder.dateDecodingStrategy = .iso8601
 
         do {
-            accounts = try decoder.decode([GitAccount].self, from: data)
+            accounts = try decoder.decode([DevProfile].self, from: data)
         } catch {
             // ERROR HANDLING: Sanitized error message (MED-03 fix)
             lastError = AccountStoreError.sanitized("Failed to load accounts")
@@ -453,8 +518,8 @@ final class AccountStore: ObservableObject {
 
         do {
             // Try to decode using legacy format that includes PAT
-            let legacyAccounts = try GitAccount.decodeLegacy(from: data)
-            var migratedAccounts: [GitAccount] = []
+            let legacyAccounts = try DevProfile.decodeLegacy(from: data)
+            var migratedAccounts: [DevProfile] = []
 
             for (account, legacyToken) in legacyAccounts {
                 // Save each PAT to per-account Keychain storage
@@ -465,7 +530,10 @@ final class AccountStore: ObservableObject {
                     )
                     Self.logger.info("Migrated PAT for account: \(account.githubUsername)")
                 }
-                migratedAccounts.append(account)
+                
+                var cleanAccount = account
+                cleanAccount.cloudflareApiToken = "" // Just to be safe
+                migratedAccounts.append(cleanAccount)
             }
 
             // Update in-memory accounts
@@ -487,7 +555,7 @@ final class AccountStore: ObservableObject {
             decoder.dateDecodingStrategy = .iso8601
 
             do {
-                accounts = try decoder.decode([GitAccount].self, from: data)
+                accounts = try decoder.decode([DevProfile].self, from: data)
                 // Data was already in new format, mark migration complete
                 UserDefaults.standard.set(true, forKey: migrationCompleteKey)
             } catch {
@@ -510,7 +578,7 @@ final class AccountStore: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .tokenNotFound:
-                return "Account token not found in keychain"
+                return "Account credentials (PAT or API Token) not found in keychain"
             case .accountNotFound:
                 return "Account not found"
             case .duplicateAccount(let username):

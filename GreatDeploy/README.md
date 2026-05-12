@@ -1,11 +1,11 @@
-# Git Account Switcher
+# Great Deploy
 
 <p align="center">
-  <img src="docs/icon.png" alt="Git Account Switcher Icon" width="128" height="128">
+  <img src="docs/icon.png" alt="Great Deploy Icon" width="128" height="128">
 </p>
 
 <p align="center">
-  <strong>A native macOS menu bar app for seamlessly switching between multiple GitHub accounts</strong>
+  <strong>A native macOS menu bar app for seamlessly switching between multiple developer profiles (GitHub + Cloudflare)</strong>
 </p>
 
 <p align="center">
@@ -21,10 +21,11 @@
 ## Features
 
 - **Menu Bar Interface** - Lives in your menu bar for instant access
-- **One-Click Switching** - Switch accounts with a single click
-- **Keychain Integration** - Automatically updates GitHub credentials in macOS Keychain
+- **One-Click Switching** - Switch developer profiles (GitHub + Cloudflare) with a single click
+- **Keychain Integration** - Automatically updates credentials in macOS Keychain securely
 - **Git Config Management** - Updates `git config --global user.name` and `user.email`
-- **Secure Storage** - Personal Access Tokens stored securely in Keychain (never in plain text)
+- **Cloudflare Integration** - Manages `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in `~/.wrangler/config/default.toml` and launchctl environment.
+- **Secure Storage** - Personal Access Tokens & API Tokens stored securely in Keychain (never in plain text)
 - **Launch at Login** - Optionally start automatically when you log in
 - **Native Notifications** - Get notified when account switches complete
 - **No Dock Icon** - Runs as a background utility (menu bar only)
@@ -36,7 +37,7 @@
 - **macOS 13.0** (Ventura) or later
 - **Xcode 15.0** or later (for building from source)
 - **Git** installed (typically at `/usr/bin/git` or via Homebrew)
-- **GitHub CLI** (optional, for repository setup)
+- **Wrangler / Cloudflare CLI** (optional, for Cloudflare deployments)
 
 ## Installation
 
@@ -44,56 +45,56 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/MinhOmega/GitAccountSwitcher.git
-cd GitAccountSwitcher/GitAccountSwitcher
+git clone https://github.com/MinhOmega/GreatDeploy.git
+cd GreatDeploy/GreatDeploy
 
 # Clean any previous builds (recommended for fresh builds)
-xcodebuild -project GitAccountSwitcher.xcodeproj \
-  -scheme GitAccountSwitcher \
+xcodebuild -project GreatDeploy.xcodeproj \
+  -scheme GreatDeploy \
   clean
 
 # Clear derived data cache (ensures clean build)
-rm -rf ~/Library/Developer/Xcode/DerivedData/GitAccountSwitcher-*
+rm -rf ~/Library/Developer/Xcode/DerivedData/GreatDeploy-*
 
 # Build the app (Release configuration)
-xcodebuild -project GitAccountSwitcher.xcodeproj \
-  -scheme GitAccountSwitcher \
+xcodebuild -project GreatDeploy.xcodeproj \
+  -scheme GreatDeploy \
   -configuration Release \
   build
 
 # Find the built app
-APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData/GitAccountSwitcher-*/Build/Products/Release -name "GitAccountSwitcher.app" -type d | head -1)
+APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData/GreatDeploy-*/Build/Products/Release -name "GreatDeploy.app" -type d | head -1)
 
 # Remove old version if exists
-rm -rf /Applications/GitAccountSwitcher.app
+rm -rf /Applications/GreatDeploy.app
 
 # Copy to Applications folder
 cp -R "$APP_PATH" /Applications/
 
 # Launch the app
-open /Applications/GitAccountSwitcher.app
+open /Applications/GreatDeploy.app
 ```
 
 **Quick One-Liner (Clean Build & Install):**
 ```bash
-cd GitAccountSwitcher/GitAccountSwitcher && \
-xcodebuild -project GitAccountSwitcher.xcodeproj -scheme GitAccountSwitcher clean && \
-rm -rf ~/Library/Developer/Xcode/DerivedData/GitAccountSwitcher-* && \
-xcodebuild -project GitAccountSwitcher.xcodeproj -scheme GitAccountSwitcher -configuration Release build && \
-rm -rf /Applications/GitAccountSwitcher.app && \
-cp -R ~/Library/Developer/Xcode/DerivedData/GitAccountSwitcher-*/Build/Products/Release/GitAccountSwitcher.app /Applications/ && \
-open /Applications/GitAccountSwitcher.app
+cd GreatDeploy/GreatDeploy && \
+xcodebuild -project GreatDeploy.xcodeproj -scheme GreatDeploy clean && \
+rm -rf ~/Library/Developer/Xcode/DerivedData/GreatDeploy-* && \
+xcodebuild -project GreatDeploy.xcodeproj -scheme GreatDeploy -configuration Release build && \
+rm -rf /Applications/GreatDeploy.app && \
+cp -R ~/Library/Developer/Xcode/DerivedData/GreatDeploy-*/Build/Products/Release/GreatDeploy.app /Applications/ && \
+open /Applications/GreatDeploy.app
 ```
 
 ### Option 2: Build with Xcode
 
 ```bash
 # Clone the repository
-git clone https://github.com/MinhOmega/GitAccountSwitcher.git
-cd GitAccountSwitcher/GitAccountSwitcher
+git clone https://github.com/MinhOmega/GreatDeploy.git
+cd GreatDeploy/GreatDeploy
 
 # Open in Xcode
-open GitAccountSwitcher.xcodeproj
+open GreatDeploy.xcodeproj
 ```
 
 Then in Xcode:
@@ -105,39 +106,39 @@ Then in Xcode:
 
 ```bash
 # Clone, build, and install in one command
-git clone https://github.com/MinhOmega/GitAccountSwitcher.git && \
-cd GitAccountSwitcher/GitAccountSwitcher && \
-xcodebuild -project GitAccountSwitcher.xcodeproj \
-  -scheme GitAccountSwitcher \
+git clone https://github.com/MinhOmega/GreatDeploy.git && \
+cd GreatDeploy/GreatDeploy && \
+xcodebuild -project GreatDeploy.xcodeproj \
+  -scheme GreatDeploy \
   -configuration Release \
   -derivedDataPath build \
   build && \
-cp -R build/Build/Products/Release/GitAccountSwitcher.app /Applications/ && \
-open /Applications/GitAccountSwitcher.app
+cp -R build/Build/Products/Release/GreatDeploy.app /Applications/ && \
+open /Applications/GreatDeploy.app
 ```
 
 ### Verify Installation
 
 ```bash
 # Check if the app is installed
-ls -la /Applications/GitAccountSwitcher.app
+ls -la /Applications/GreatDeploy.app
 
 # Check if it's running
-pgrep -l GitAccountSwitcher
+pgrep -l GreatDeploy
 ```
 
 ### Uninstall
 
 ```bash
 # Remove the app
-rm -rf /Applications/GitAccountSwitcher.app
+rm -rf /Applications/GreatDeploy.app
 
 # Remove app data (optional)
-rm -rf ~/Library/Application\ Support/GitAccountSwitcher
-rm -rf ~/Library/Preferences/com.gitaccountswitcher.plist
+rm -rf ~/Library/Application\ Support/GreatDeploy
+rm -rf ~/Library/Preferences/com.greatdeploy.plist
 
 # Remove from Login Items (if enabled)
-# System Settings > General > Login Items > Remove GitAccountSwitcher
+# System Settings > General > Login Items > Remove GreatDeploy
 ```
 
 ## Usage
@@ -152,6 +153,8 @@ rm -rf ~/Library/Preferences/com.gitaccountswitcher.plist
    - **Personal Access Token**: Your GitHub PAT ([create one here](#creating-a-personal-access-token))
    - **Git User Name**: The name for git commits (can differ from GitHub username)
    - **Git User Email**: The email for git commits
+   - **Cloudflare Account ID**: (Optional) Your Cloudflare Account ID
+   - **Cloudflare API Token**: (Optional) Your Cloudflare API Token
 4. Click **"Add"**
 
 ### Switching Accounts
@@ -168,6 +171,7 @@ When you switch accounts, the app will:
 - Update GitHub credentials in macOS Keychain
 - Run `git config --global user.name "Your Name"`
 - Run `git config --global user.email "your@email.com"`
+- Set up Cloudflare tokens in `~/.wrangler/config/default.toml` and via `launchctl`
 - Show a notification (if enabled)
 
 ### Managing Accounts
@@ -245,7 +249,7 @@ This updates `~/.gitconfig`:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Git Account Switcher                  │
+│                    Great Deploy                  │
 ├─────────────────────────────────────────────────────────┤
 │  AccountStore (ObservableObject)                        │
 │  - Coordinates all operations                           │
@@ -266,10 +270,10 @@ This updates `~/.gitconfig`:
 ## Project Structure
 
 ```
-GitAccountSwitcher/
-├── GitAccountSwitcher.xcodeproj/     # Xcode project file
-├── GitAccountSwitcher/
-│   ├── GitAccountSwitcherApp.swift   # App entry point, MenuBarExtra, Windows
+GreatDeploy/
+├── GreatDeploy.xcodeproj/     # Xcode project file
+├── GreatDeploy/
+│   ├── GreatDeployApp.swift   # App entry point, MenuBarExtra, Windows
 │   ├── Models/
 │   │   └── GitAccount.swift          # Account data model (Codable)
 │   ├── Services/
@@ -280,7 +284,7 @@ GitAccountSwitcher/
 │   │   └── AddEditAccountView.swift  # Account form UI
 │   ├── Assets.xcassets/              # App icons and colors
 │   ├── Info.plist                    # Bundle configuration
-│   └── GitAccountSwitcher.entitlements
+│   └── GreatDeploy.entitlements
 ├── docs/                             # Documentation assets
 ├── build/                            # Build output (gitignored)
 └── README.md                         # This file
@@ -341,8 +345,8 @@ git config --global credential.helper osxkeychain
 **Solution:**
 ```bash
 # Force quit and restart
-pkill GitAccountSwitcher
-open /Applications/GitAccountSwitcher.app
+pkill GreatDeploy
+open /Applications/GreatDeploy.app
 
 # Check Console.app for crash logs
 open /Applications/Utilities/Console.app
@@ -355,8 +359,8 @@ open /Applications/Utilities/Console.app
 - Select your team in Signing & Capabilities
 - Or build with `CODE_SIGNING_ALLOWED=NO` for local testing:
   ```bash
-  xcodebuild -project GitAccountSwitcher.xcodeproj \
-    -scheme GitAccountSwitcher \
+  xcodebuild -project GreatDeploy.xcodeproj \
+    -scheme GreatDeploy \
     -configuration Debug \
     CODE_SIGNING_ALLOWED=NO \
     build
@@ -402,14 +406,14 @@ The app requires these capabilities that are incompatible with App Store sandbox
 
 ```bash
 # Debug build
-xcodebuild -project GitAccountSwitcher.xcodeproj \
-  -scheme GitAccountSwitcher \
+xcodebuild -project GreatDeploy.xcodeproj \
+  -scheme GreatDeploy \
   -configuration Debug \
   build
 
 # Run tests (when available)
-xcodebuild -project GitAccountSwitcher.xcodeproj \
-  -scheme GitAccountSwitcher \
+xcodebuild -project GreatDeploy.xcodeproj \
+  -scheme GreatDeploy \
   test
 ```
 
@@ -435,6 +439,7 @@ MIT License - Feel free to modify and distribute.
 
 ## Acknowledgments
 
+- **Special Thanks**: GreatDeploy is a comprehensive upgrade and expansion of the original **GitAccountSwitcher** application. We sincerely thank the original authors (including MinhOmega) for providing the open-source foundation and excellent Keychain integration concepts that made this tool possible.
 - Built with SwiftUI and the Security framework
 - Uses native macOS Keychain Services API
 - Icons from SF Symbols
@@ -442,5 +447,5 @@ MIT License - Feel free to modify and distribute.
 ---
 
 <p align="center">
-  Made with ❤️ for developers who work with multiple GitHub accounts
+  Made with ❤️ for developers who deploy code across multiple accounts
 </p>

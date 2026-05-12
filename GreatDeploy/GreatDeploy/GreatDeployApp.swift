@@ -5,7 +5,7 @@ import ServiceManagement
 // MARK: - Main App with 2025 Best Practices
 
 @main
-struct GitAccountSwitcherApp: App {
+struct GreatDeployApp: App {
     @StateObject private var accountStore = AccountStore()
     @State private var showingAddAccount = false
     @State private var dockBadgeCount = 0
@@ -23,7 +23,7 @@ struct GitAccountSwitcherApp: App {
     var body: some Scene {
         // Main window with enhanced visual effects
         // NOTE: Dock icon visibility is managed by AppDelegate via window notifications
-        Window("Git Account Switcher", id: "main") {
+        Window("Great Deploy", id: "main") {
             MainWindowView()
                 .environmentObject(accountStore)
                 .preferredColorScheme(.dark)
@@ -93,7 +93,7 @@ extension View {
     /// Enhanced account switching with animations and notifications
     @MainActor
     func performAccountSwitch(
-        to account: GitAccount,
+        to account: DevProfile,
         accountStore: AccountStore,
         isSwitching: Binding<Bool>,
         showNotification: Bool,
@@ -133,7 +133,7 @@ extension View {
     /// Shows enhanced notification with rich content and CLI status
     @MainActor
     private func showEnhancedNotification(
-        for account: GitAccount,
+        for account: DevProfile,
         cliStatus: AccountStore.CLISwitchStatus = .none
     ) async {
         let content = UNMutableNotificationContent()
@@ -141,6 +141,10 @@ extension View {
         content.subtitle = "Now using: \(account.displayName)"
 
         var body = "GitHub: @\(account.githubUsername)\nEmail: \(account.gitUserEmail)"
+
+        if !account.cloudflareAccountId.isEmpty {
+            body += "\nCloudflare: \(account.cloudflareAccountId)"
+        }
 
         switch cliStatus {
         case .success:
@@ -330,7 +334,7 @@ struct MainWindowView: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Git Account Switcher")
+                Text("Great Deploy")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
 
@@ -520,7 +524,7 @@ struct MainWindowView: View {
         .padding(.vertical, 12)
     }
 
-    private func switchToAccount(_ account: GitAccount) async {
+    private func switchToAccount(_ account: DevProfile) async {
         await performAccountSwitch(
             to: account,
             accountStore: accountStore,
@@ -537,7 +541,7 @@ struct MainWindowView: View {
 
 struct EnhancedAccountCard: View {
     @EnvironmentObject var accountStore: AccountStore
-    let account: GitAccount
+    let account: DevProfile
     let isHovered: Bool
     let isSwitching: Bool
     let onSwitch: () async -> Void
@@ -680,6 +684,21 @@ struct EnhancedAccountCard: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(account.gitUserEmail)
+                }
+
+                // Cloudflare Account
+                if !account.cloudflareAccountId.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "cloud.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                        Text(account.cloudflareAccountId)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help("Cloudflare: \(account.cloudflareAccountId)")
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -893,7 +912,7 @@ struct MenuBarContentView: View {
         }
     }
 
-    private func switchToAccount(_ account: GitAccount) async {
+    private func switchToAccount(_ account: DevProfile) async {
         await performAccountSwitch(
             to: account,
             accountStore: accountStore,
@@ -907,7 +926,7 @@ struct MenuBarContentView: View {
         NSApp.activate(ignoringOtherApps: true)
 
         if let window = NSApp.windows.first(where: {
-            $0.identifier?.rawValue == "main" || $0.title == "Git Account Switcher"
+            $0.identifier?.rawValue == "main" || $0.title == "Great Deploy"
         }) {
             window.makeKeyAndOrderFront(nil)
         } else if let window = NSApp.windows.first(where: { $0.canBecomeMain }) {
@@ -921,7 +940,7 @@ struct MenuBarContentView: View {
 // MARK: - Enhanced Quick Switch Row
 
 struct EnhancedQuickSwitchRow: View {
-    let account: GitAccount
+    let account: DevProfile
     let isHovered: Bool
     let isSwitching: Bool
     let onSwitch: () async -> Void
@@ -1141,7 +1160,7 @@ struct GeneralSettingsView: View {
 struct AccountsSettingsView: View {
     @EnvironmentObject var accountStore: AccountStore
     @AppStorage("enableVisualEffects") private var enableVisualEffects = true
-    @State private var selectedAccount: GitAccount?
+    @State private var selectedAccount: DevProfile?
     @State private var showingAddSheet = false
     @State private var showingEditSheet = false
     @State private var deleteError: Error?
@@ -1286,7 +1305,7 @@ struct AboutView: View {
                     )
             }
 
-            Text("Git Account Switcher")
+            Text("Great Deploy")
                 .font(.title)
                 .fontWeight(.bold)
 
@@ -1299,7 +1318,7 @@ struct AboutView: View {
 
             Spacer()
 
-            Link("View on GitHub", destination: URL(string: "https://github.com/MinhOmega/GitAccountSwitcher")!)
+            Link("View on GitHub", destination: URL(string: "https://github.com/MinhOmega/GreatDeploy")!)
                 .buttonStyle(.link)
         }
         .padding()
@@ -1450,7 +1469,7 @@ extension Color {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
-    private static let mainWindowTitle = "Git Account Switcher"
+    private static let mainWindowTitle = "Great Deploy"
 
     /// Controls dock icon visibility dynamically
     /// - Parameter visible: true to show dock icon, false to hide (menu bar only mode)

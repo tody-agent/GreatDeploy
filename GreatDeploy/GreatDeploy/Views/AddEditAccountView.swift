@@ -11,7 +11,7 @@ struct AddEditAccountView: View {
 
     enum Mode: Identifiable {
         case add
-        case edit(GitAccount)
+        case edit(DevProfile)
 
         var id: String {
             switch self {
@@ -34,7 +34,7 @@ struct AddEditAccountView: View {
             }
         }
 
-        var account: GitAccount? {
+        var account: DevProfile? {
             switch self {
             case .add: return nil
             case .edit(let account): return account
@@ -78,6 +78,8 @@ struct AddEditAccountView: View {
     @State private var personalAccessToken = ""
     @State private var gitUserName = ""
     @State private var gitUserEmail = ""
+    @State private var cloudflareAccountId = ""
+    @State private var cloudflareApiToken = ""
 
     // State
     @State private var isSaving = false
@@ -85,6 +87,7 @@ struct AddEditAccountView: View {
     @State private var showingError = false
     @State private var showingTokenHelp = false
     @State private var originalToken = "" // Track original token for edit mode
+    @State private var originalCloudflareToken = ""
     @State private var showingCLIReminder = false
     @State private var savedAccountName = ""
 
@@ -145,6 +148,7 @@ struct AddEditAccountView: View {
             Form {
                 displaySection
                 credentialsSection
+                cloudflareSection
                 gitConfigSection
             }
             .formStyle(.grouped)
@@ -173,6 +177,7 @@ struct AddEditAccountView: View {
             cliCheckTask?.cancel()
             // SECURITY: Securely zero token from memory when view closes
             ValidationUtilities.secureZeroString(&personalAccessToken)
+            ValidationUtilities.secureZeroString(&cloudflareApiToken)
         }
         .alert("Error", isPresented: $showingError, presenting: saveError) { _ in
             Button("OK", role: .cancel) {}
@@ -314,6 +319,21 @@ struct AddEditAccountView: View {
             Text("GitHub Credentials")
         } footer: {
             Text("Your GitHub username and Personal Access Token (PAT)")
+        }
+    }
+
+    private var cloudflareSection: some View {
+        Section {
+            TextField("Account ID", text: $cloudflareAccountId)
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+
+            SecureField("API Token", text: $cloudflareApiToken)
+                .textFieldStyle(.roundedBorder)
+        } header: {
+            Text("Cloudflare Credentials")
+        } footer: {
+            Text("Your Cloudflare Account ID and API Token (Optional)")
         }
     }
 
@@ -474,11 +494,16 @@ struct AddEditAccountView: View {
         githubUsername = account.githubUsername
         gitUserName = account.gitUserName
         gitUserEmail = account.gitUserEmail
+        cloudflareAccountId = account.cloudflareAccountId
         // SECURITY: Load token from Keychain (never from model or UserDefaults)
         let storedToken = KeychainService.shared.readAccountToken(accountId: account.id) ?? ""
         personalAccessToken = storedToken
         // Save original token to allow unchanged token in validation
         originalToken = storedToken
+
+        let storedCfToken = KeychainService.shared.readCloudflareToken(accountId: account.id) ?? ""
+        cloudflareApiToken = storedCfToken
+        originalCloudflareToken = storedCfToken
     }
 
     private func save() {
@@ -490,6 +515,7 @@ struct AddEditAccountView: View {
                     isSaving = false
                     // SECURITY: Securely zero token from memory after save attempt
                     ValidationUtilities.secureZeroString(&personalAccessToken)
+                    ValidationUtilities.secureZeroString(&cloudflareApiToken)
                 }
             }
 
@@ -498,13 +524,15 @@ struct AddEditAccountView: View {
                 try validateInputs()
 
                 // Create account with trimmed values
-                let account = GitAccount(
+                let account = DevProfile(
                     id: mode.account?.id ?? UUID(),
                     displayName: displayName.trimmingCharacters(in: .whitespaces),
                     githubUsername: githubUsername.trimmingCharacters(in: .whitespaces),
                     personalAccessToken: personalAccessToken.trimmingCharacters(in: .whitespaces),
                     gitUserName: gitUserName.trimmingCharacters(in: .whitespaces),
                     gitUserEmail: gitUserEmail.trimmingCharacters(in: .whitespaces),
+                    cloudflareAccountId: cloudflareAccountId.trimmingCharacters(in: .whitespaces),
+                    cloudflareApiToken: cloudflareApiToken.trimmingCharacters(in: .whitespaces),
                     isActive: mode.account?.isActive ?? false,
                     createdAt: mode.account?.createdAt ?? Date(),
                     lastUsedAt: mode.account?.lastUsedAt

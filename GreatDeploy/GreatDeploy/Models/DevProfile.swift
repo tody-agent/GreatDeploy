@@ -2,13 +2,15 @@ import Foundation
 
 /// Represents a GitHub account configuration for switching
 /// Conforms to Sendable for safe usage across actor boundaries (Swift 6 compatibility)
-struct GitAccount: Identifiable, Equatable, Hashable, Sendable {
+struct DevProfile: Identifiable, Equatable, Hashable, Sendable {
     var id: UUID
     var displayName: String       // e.g., "Personal", "Work"
     var githubUsername: String    // GitHub account username
     var personalAccessToken: String // SECURITY: Transient only — NEVER serialized. Stored in Keychain via KeychainService.
     var gitUserName: String       // git config user.name
     var gitUserEmail: String      // git config user.email
+    var cloudflareAccountId: String
+    var cloudflareApiToken: String // SECURITY: Transient only — NEVER serialized.
     var isActive: Bool
     var createdAt: Date
     var lastUsedAt: Date?
@@ -20,6 +22,8 @@ struct GitAccount: Identifiable, Equatable, Hashable, Sendable {
         personalAccessToken: String = "",
         gitUserName: String,
         gitUserEmail: String,
+        cloudflareAccountId: String = "",
+        cloudflareApiToken: String = "",
         isActive: Bool = false,
         createdAt: Date = Date(),
         lastUsedAt: Date? = nil
@@ -30,13 +34,15 @@ struct GitAccount: Identifiable, Equatable, Hashable, Sendable {
         self.personalAccessToken = personalAccessToken
         self.gitUserName = gitUserName
         self.gitUserEmail = gitUserEmail
+        self.cloudflareAccountId = cloudflareAccountId
+        self.cloudflareApiToken = cloudflareApiToken
         self.isActive = isActive
         self.createdAt = createdAt
         self.lastUsedAt = lastUsedAt
     }
 
     /// Creates a copy with updated active state
-    func withActiveState(_ active: Bool) -> GitAccount {
+    func withActiveState(_ active: Bool) -> DevProfile {
         var copy = self
         copy.isActive = active
         if active {
@@ -48,12 +54,12 @@ struct GitAccount: Identifiable, Equatable, Hashable, Sendable {
 
 // MARK: - Codable (SECURITY: PAT is EXCLUDED from serialization)
 
-extension GitAccount: Codable {
+extension DevProfile: Codable {
     enum CodingKeys: String, CodingKey {
         // SECURITY: personalAccessToken is intentionally EXCLUDED.
-        // PATs are stored exclusively in the macOS Keychain via KeychainService.
+        // PATs and Cloudflare tokens are stored exclusively in the macOS Keychain via KeychainService.
         case id, displayName, githubUsername
-        case gitUserName, gitUserEmail, isActive, createdAt, lastUsedAt
+        case gitUserName, gitUserEmail, cloudflareAccountId, isActive, createdAt, lastUsedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -61,10 +67,12 @@ extension GitAccount: Codable {
         id = try container.decode(UUID.self, forKey: .id)
         displayName = try container.decode(String.self, forKey: .displayName)
         githubUsername = try container.decode(String.self, forKey: .githubUsername)
-        // SECURITY: PAT is never decoded from storage — always loaded from Keychain
+        // SECURITY: Tokens are never decoded from storage — always loaded from Keychain
         personalAccessToken = ""
+        cloudflareApiToken = ""
         gitUserName = try container.decode(String.self, forKey: .gitUserName)
         gitUserEmail = try container.decode(String.self, forKey: .gitUserEmail)
+        cloudflareAccountId = try container.decodeIfPresent(String.self, forKey: .cloudflareAccountId) ?? ""
         isActive = try container.decode(Bool.self, forKey: .isActive)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt)
@@ -75,9 +83,10 @@ extension GitAccount: Codable {
         try container.encode(id, forKey: .id)
         try container.encode(displayName, forKey: .displayName)
         try container.encode(githubUsername, forKey: .githubUsername)
-        // SECURITY: PAT is NEVER encoded — stored exclusively in Keychain
+        // SECURITY: PAT and Cloudflare API tokens are NEVER encoded
         try container.encode(gitUserName, forKey: .gitUserName)
         try container.encode(gitUserEmail, forKey: .gitUserEmail)
+        try container.encode(cloudflareAccountId, forKey: .cloudflareAccountId)
         try container.encode(isActive, forKey: .isActive)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encodeIfPresent(lastUsedAt, forKey: .lastUsedAt)
@@ -86,7 +95,7 @@ extension GitAccount: Codable {
 
 // MARK: - Legacy Migration Support
 
-extension GitAccount {
+extension DevProfile {
     /// CodingKeys that include personalAccessToken for one-time migration from legacy UserDefaults storage.
     /// Used ONLY during migration — after migration PATs are deleted from UserDefaults.
     enum LegacyCodingKeys: String, CodingKey {
@@ -96,20 +105,22 @@ extension GitAccount {
 
     /// Decodes from legacy format that included PAT in UserDefaults.
     /// Returns the PAT so the caller can migrate it to the Keychain.
-    static func decodeLegacy(from data: Data) throws -> [(account: GitAccount, legacyToken: String)] {
+    static func decodeLegacy(from data: Data) throws -> [(account: DevProfile, legacyToken: String)] {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
         // Try to decode with legacy keys that include PAT
         let container = try decoder.decode([LegacyAccount].self, from: data)
         return container.map { legacy in
-            let account = GitAccount(
+            let account = DevProfile(
                 id: legacy.id,
                 displayName: legacy.displayName,
                 githubUsername: legacy.githubUsername,
                 personalAccessToken: "", // Don't keep PAT in model
                 gitUserName: legacy.gitUserName,
                 gitUserEmail: legacy.gitUserEmail,
+                cloudflareAccountId: "",
+                cloudflareApiToken: "",
                 isActive: legacy.isActive,
                 createdAt: legacy.createdAt,
                 lastUsedAt: legacy.lastUsedAt
@@ -134,22 +145,24 @@ extension GitAccount {
 
 // MARK: - Debug String (Security)
 
-extension GitAccount: CustomDebugStringConvertible, CustomStringConvertible {
+extension DevProfile: CustomDebugStringConvertible, CustomStringConvertible {
     /// String representation that redacts sensitive token data
     var description: String {
-        "GitAccount(displayName: \(displayName), username: @\(githubUsername))"
+        "DevProfile(displayName: \(displayName), username: @\(githubUsername))"
     }
 
     /// Debug description that shows all fields except the sensitive token
     var debugDescription: String {
         """
-        GitAccount {
+        DevProfile {
             id: \(id.uuidString)
             displayName: \(displayName)
             githubUsername: @\(githubUsername)
             personalAccessToken: [REDACTED — Keychain only]
             gitUserName: \(gitUserName)
             gitUserEmail: \(gitUserEmail)
+            cloudflareAccountId: \(cloudflareAccountId)
+            cloudflareApiToken: [REDACTED — Keychain only]
             isActive: \(isActive)
             createdAt: \(createdAt)
             lastUsedAt: \(lastUsedAt?.description ?? "nil")
@@ -159,22 +172,26 @@ extension GitAccount: CustomDebugStringConvertible, CustomStringConvertible {
 }
 
 // MARK: - Preview/Testing Support
-extension GitAccount {
-    static let preview = GitAccount(
+extension DevProfile {
+    static let preview = DevProfile(
         displayName: "Personal",
         githubUsername: "preview-user",
         personalAccessToken: "",  // SECURITY: Always empty in preview - tokens never needed for UI
         gitUserName: "Preview User",
         gitUserEmail: "preview@example.com",
+        cloudflareAccountId: "cloudflare-preview-id",
+        cloudflareApiToken: "",
         isActive: true
     )
 
-    static let previewWork = GitAccount(
+    static let previewWork = DevProfile(
         displayName: "Work",
         githubUsername: "preview-work",
         personalAccessToken: "",  // SECURITY: Always empty in preview
         gitUserName: "Preview Work User",
         gitUserEmail: "work@example.com",
+        cloudflareAccountId: "cloudflare-work-id",
+        cloudflareApiToken: "",
         isActive: false
     )
 }

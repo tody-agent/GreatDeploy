@@ -87,7 +87,7 @@ struct WelcomeView: View {
                     )
             }
 
-            Text("Welcome to Git Account Switcher")
+            Text("Welcome to Great Deploy")
                 .font(.title2)
                 .fontWeight(.bold)
 
@@ -422,12 +422,14 @@ struct WelcomeView: View {
             // Get current git config for name/email
             let gitConfig = try? await GitConfigService.shared.getCurrentConfigAsync()
 
-            let account = GitAccount(
+            let account = DevProfile(
                 displayName: credential.username,
                 githubUsername: credential.username,
                 personalAccessToken: credential.token,
                 gitUserName: gitConfig?.name ?? credential.username,
                 gitUserEmail: gitConfig?.email ?? "\(credential.username)@users.noreply.github.com",
+                cloudflareAccountId: "",
+                cloudflareApiToken: "",
                 isActive: true
             )
 

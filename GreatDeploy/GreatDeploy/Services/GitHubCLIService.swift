@@ -7,7 +7,7 @@ final class GitHubCLIService {
 
     // MARK: - Logging
 
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "GitAccountSwitcher", category: "GitHubCLI")
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "GreatDeploy", category: "GitHubCLI")
 
     // MARK: - Errors
 

@@ -1,5 +1,5 @@
 import XCTest
-@testable import GitAccountSwitcher
+@testable import GreatDeploy
 
 final class ValidationUtilitiesTests: XCTestCase {
 

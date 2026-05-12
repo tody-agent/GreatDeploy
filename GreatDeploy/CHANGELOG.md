@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to GitAccountSwitcher will be documented in this file.
+All notable changes to GreatDeploy will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Runtime Stability
 
-- **CRITICAL: Fixed App Crash on Launch** (GitAccountSwitcherApp.swift:13-20)
+- **CRITICAL: Fixed App Crash on Launch** (GreatDeployApp.swift:13-20)
   - Removed `setupAppearance()` function that was accessing `NSApp` during `App.init()`
   - `NSApp` is not available during SwiftUI App initialization, causing fatal crashes
   - Previous implementation attempted to set `.vibrantDark` appearance (which doesn't exist)
@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### macOS Version Compatibility (Build Fixes)
 
-- **Fixed SwiftUI Symbol Effects Compatibility** (GitAccountSwitcherApp.swift:1187-1188, 269-283)
+- **Fixed SwiftUI Symbol Effects Compatibility** (GreatDeployApp.swift:1187-1188, 269-283)
   - Removed unused `adaptiveSymbolEffect` function that required macOS 15.0+ types (`SymbolEffectOptionsRepeatBehavior`)
   - Changed `.bounce` symbol effect from macOS 14.0+ to macOS 15.0+ availability check
   - Added fallback `.pulse` effect for macOS 14.0-14.9

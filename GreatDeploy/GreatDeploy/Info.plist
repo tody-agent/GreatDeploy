@@ -7,10 +7,10 @@
 
     <!-- App info -->
     <key>CFBundleName</key>
-    <string>Git Account Switcher</string>
+    <string>Great Deploy</string>
 
     <key>CFBundleDisplayName</key>
-    <string>Git Account Switcher</string>
+    <string>Great Deploy</string>
 
     <key>CFBundleIdentifier</key>
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
@@ -44,6 +44,6 @@
 
     <!-- Keychain usage description -->
     <key>NSKeychainUsageDescription</key>
-    <string>Git Account Switcher needs access to Keychain to manage your GitHub credentials securely.</string>
+    <string>Great Deploy needs access to Keychain to manage your GitHub credentials securely.</string>
 </dict>
 </plist>

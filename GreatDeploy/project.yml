@@ -1,7 +1,7 @@
-name: GitAccountSwitcher
+name: GreatDeploy
 
 options:
-  bundleIdPrefix: com.gitaccountswitcher
+  bundleIdPrefix: com.greatdeploy
   deploymentTarget:
     macOS: "13.0"
   xcodeVersion: "15.0"
@@ -17,12 +17,12 @@ settings:
     ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
 
 targets:
-  GitAccountSwitcher:
+  GreatDeploy:
     type: application
     platform: macOS
 
     sources:
-      - path: GitAccountSwitcher
+      - path: GreatDeploy
         excludes:
           - "*.md"
           - "build"
@@ -31,15 +31,15 @@ targets:
 
     settings:
       base:
-        PRODUCT_NAME: GitAccountSwitcher
-        PRODUCT_BUNDLE_IDENTIFIER: com.gitaccountswitcher.app
+        PRODUCT_NAME: GreatDeploy
+        PRODUCT_BUNDLE_IDENTIFIER: com.greatdeploy.app
         MARKETING_VERSION: 1.1.0
         CURRENT_PROJECT_VERSION: "2"
-        INFOPLIST_FILE: GitAccountSwitcher/Info.plist
-        INFOPLIST_KEY_CFBundleDisplayName: "Git Account Switcher"
+        INFOPLIST_FILE: GreatDeploy/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: "Great Deploy"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
         INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2024. All rights reserved."
-        CODE_SIGN_ENTITLEMENTS: GitAccountSwitcher/GitAccountSwitcher.entitlements
+        CODE_SIGN_ENTITLEMENTS: GreatDeploy/GreatDeploy.entitlements
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: ""
         COMBINE_HIDPI_IMAGES: YES
@@ -53,13 +53,14 @@ targets:
       release:
         SWIFT_COMPILATION_MODE: wholemodule
 
-  GitAccountSwitcherTests:
+  GreatDeployTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: GitAccountSwitcherTests
+      - path: GreatDeployTests
     dependencies:
-      - target: GitAccountSwitcher
+      - target: GreatDeploy
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.gitaccountswitcher.app.tests
+        PRODUCT_BUNDLE_IDENTIFIER: com.greatdeploy.app.tests
+        GENERATE_INFOPLIST_FILE: YES
