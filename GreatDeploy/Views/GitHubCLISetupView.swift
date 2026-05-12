@@ -49,14 +49,14 @@ struct GitHubCLISetupView: View {
                 }
                 .padding(30)
             }
-            .modifier(ConditionalBackground(enableMaterial: enableVisualEffects, material: .ultraThin, fallbackColor: .clear))
+            .background(Color(nsColor: .textBackgroundColor))
 
             Divider()
 
             // Footer actions
             footerActions
                 .padding()
-                .modifier(ConditionalBackground(enableMaterial: enableVisualEffects, material: .bar, fallbackColor: Color(nsColor: .controlBackgroundColor)))
+                .background(Color(nsColor: .windowBackgroundColor))
         }
         .frame(width: 520, height: 560)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -111,7 +111,7 @@ struct GitHubCLISetupView: View {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [.githubGreen.opacity(0.2), .githubBlue.opacity(0.2)],
+                            colors: [.green.opacity(0.2), .blue.opacity(0.2)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -123,7 +123,7 @@ struct GitHubCLISetupView: View {
                     .font(.system(size: 56))
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [.githubGreen, .githubBlue],
+                            colors: [.green, .blue],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )

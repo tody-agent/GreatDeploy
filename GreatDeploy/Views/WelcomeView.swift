@@ -18,13 +18,6 @@ struct WelcomeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            welcomeHeader
-                .padding(.top, 30)
-                .padding(.bottom, 20)
-
-            Divider()
-
             // Content
             ScrollView {
                 VStack(spacing: 24) {
@@ -40,14 +33,14 @@ struct WelcomeView: View {
                 }
                 .padding(30)
             }
-            .modifier(ConditionalBackground(enableMaterial: enableVisualEffects, material: .ultraThin, fallbackColor: .clear))
+            .background(Color(nsColor: .textBackgroundColor))
 
             Divider()
 
             // Footer actions
             footerActions
                 .padding()
-                .modifier(ConditionalBackground(enableMaterial: enableVisualEffects, material: .bar, fallbackColor: Color(nsColor: .controlBackgroundColor)))
+                .background(Color(nsColor: .windowBackgroundColor))
         }
         .frame(width: 480, height: 520)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -59,66 +52,28 @@ struct WelcomeView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Auth Prompt View
 
-    private var welcomeHeader: some View {
-        VStack(spacing: 16) {
+    private var authPromptView: some View {
+        VStack(spacing: 24) {
             // Animated logo
             ZStack {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [.githubGreen.opacity(0.2), .githubBlue.opacity(0.2)],
+                            colors: [.green.opacity(0.2), .blue.opacity(0.2)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
-                    .frame(width: 100, height: 100)
+                    .frame(width: 80, height: 80)
                     .blur(radius: 20)
 
                 Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                    .font(.system(size: 64))
+                    .font(.system(size: 50))
                     .foregroundStyle(
                         LinearGradient(
-                            colors: [.githubGreen, .githubBlue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
-
-            Text("Welcome to Great Deploy")
-                .font(.title2)
-                .fontWeight(.bold)
-
-            Text("Quickly switch between your GitHub accounts")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: - Auth Prompt View
-
-    private var authPromptView: some View {
-        VStack(spacing: 24) {
-            // Auth icon based on method
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.blue.opacity(0.2), .purple.opacity(0.2)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 100, height: 100)
-                    .blur(radius: 20)
-
-                Image(systemName: authIconName)
-                    .font(.system(size: 56))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.blue, .purple],
+                            colors: [.green, .blue],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -126,14 +81,28 @@ struct WelcomeView: View {
             }
 
             VStack(spacing: 8) {
-                Text("Authenticate to Continue")
-                    .font(.headline)
+                Text("Welcome to Great Deploy")
+                    .font(.title2)
+                    .fontWeight(.bold)
 
-                Text(authDescription)
+                Text("Manage and switch Git, Cloudflare profiles at lightning speed.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
+
+            VStack(alignment: .leading, spacing: 12) {
+                stepRow(icon: "1.circle.fill", title: "Authenticate", description: "Grant Keychain access for the app to verify.")
+                stepRow(icon: "2.circle.fill", title: "Scan Token", description: "The system automatically searches for existing GitHub Tokens.")
+                stepRow(icon: "3.circle.fill", title: "Start", description: "Import token and get ready to use Great Deploy.")
+            }
+            .padding()
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            )
 
             // Authenticate button
             Button(action: { startCredentialDiscovery() }) {
@@ -148,13 +117,34 @@ struct WelcomeView: View {
             .buttonStyle(.borderedProminent)
             .tint(.blue)
 
-            Text("This allows the app to check for existing GitHub credentials in your Keychain")
+            Text("This is only used to read GitHub credentials from Keychain")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
+        .padding(.vertical, 10)
+    }
+
+    private func stepRow(icon: String, title: String, description: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(.blue)
+                .frame(width: 24, alignment: .center)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+        }
     }
 
     private var authIconName: String {

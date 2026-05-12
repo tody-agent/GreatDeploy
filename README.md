@@ -1,7 +1,11 @@
 # Great Deploy
 
 <p align="center">
-  <img src="docs/icon.png" alt="Great Deploy Icon" width="128" height="128">
+  <img src="Assets/GreatDeploy_GitHub_Thumbnail.png" alt="Great Deploy Thumbnail" width="100%">
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> | <a href="README_vi.md">Tiếng Việt</a> | <a href="README_zh.md">中文</a>
 </p>
 
 <p align="center">
@@ -17,6 +21,21 @@
 </p>
 
 ---
+
+## 🛑 The Problem
+
+Juggling multiple developer identities is a headache. Whether you're switching between your **Personal**, **Work**, or **Client** accounts, manually updating your `git config`, managing different Personal Access Tokens (PATs), and swapping Cloudflare credentials takes time and leads to embarrassing accidental commits on the wrong account.
+
+## 🚀 The Solution
+
+**Great Deploy** is your one-click context switcher. Living quietly in your macOS menu bar, it allows you to instantly switch your entire development environment. 
+
+With a single click, Great Deploy:
+1. Swaps your GitHub credentials securely in the macOS Keychain.
+2. Updates your global `git config user.name` and `user.email`.
+3. Injects the correct Cloudflare API tokens into your `~/.wrangler/config/default.toml` and macOS `launchctl` environment.
+
+No more terminal gymnastics. No more wrong account commits.
 
 ## Features
 

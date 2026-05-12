@@ -1,13 +1,7 @@
 import SwiftUI
 
-/// View for adding or editing a GitHub account with enhanced visual effects
+/// View for adding or editing a GitHub account
 struct AddEditAccountView: View {
-    // MARK: - Visual Effects State
-    @AppStorage("enableVisualEffects") private var enableVisualEffects = true
-    @State private var isHoveringClose = false
-    @State private var isHoveringCancel = false
-    @State private var isHoveringSave = false
-    @State private var isHoveringTokenHelp = false
 
     enum Mode: Identifiable {
         case add
@@ -131,20 +125,12 @@ struct AddEditAccountView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Enhanced header with material background
-            Group {
-                if enableVisualEffects {
-                    headerView
-                        .background(Material.bar)
-                } else {
-                    headerView
-                        .background(Color(nsColor: .windowBackgroundColor))
-                }
-            }
+            // Header
+            headerView
 
             Divider()
 
-            // Enhanced form with glass material
+            // Form
             Form {
                 displaySection
                 credentialsSection
@@ -152,25 +138,13 @@ struct AddEditAccountView: View {
                 gitConfigSection
             }
             .formStyle(.grouped)
-            .scrollContentBackground(.hidden)
-            .modifier(ConditionalBackground(enableMaterial: enableVisualEffects, material: .ultraThin, fallbackColor: .clear))
 
             Divider()
 
-            // Enhanced actions with material background
-            Group {
-                if enableVisualEffects {
-                    actionsView
-                        .background(Material.bar)
-                } else {
-                    actionsView
-                        .background(Color(nsColor: .controlBackgroundColor))
-                }
-            }
+            // Actions
+            actionsView
         }
         .frame(width: 420, height: 500)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
         .onAppear(perform: loadExistingAccount)
         .onDisappear {
             // Cancel any in-flight CLI check
@@ -206,21 +180,12 @@ struct AddEditAccountView: View {
 
             Spacer()
 
-            Button(action: {
-                withAnimation(.spring(duration: 0.3)) {
-                    dismiss()
-                }
-            }) {
+            Button(action: { dismiss() }) {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16))
-                    .foregroundStyle(isHoveringClose ? .primary : .secondary)
-                    .scaleEffect(isHoveringClose ? 1.1 : 1.0)
-                    .animation(.spring(duration: 0.2), value: isHoveringClose)
+                    .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .onHover { hovering in
-                isHoveringClose = hovering
-            }
         }
         .padding()
     }
@@ -300,20 +265,12 @@ struct AddEditAccountView: View {
                 SecureField("Personal Access Token", text: $personalAccessToken)
                     .textFieldStyle(.roundedBorder)
 
-                Button(action: {
-                    withAnimation(.spring(duration: 0.3)) {
-                        showingTokenHelp = true
-                    }
-                }) {
+                Button(action: { showingTokenHelp = true }) {
                     Image(systemName: "questionmark.circle")
-                        .foregroundStyle(isHoveringTokenHelp ? .blue : .secondary)
-                        .scaleEffect(isHoveringTokenHelp ? 1.1 : 1.0)
-                        .animation(.spring(duration: 0.2), value: isHoveringTokenHelp)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .onHover { hovering in
-                    isHoveringTokenHelp = hovering
-                }
+                .help("How to create a Personal Access Token")
             }
         } header: {
             Text("GitHub Credentials")
@@ -355,19 +312,8 @@ struct AddEditAccountView: View {
 
     private var actionsView: some View {
         HStack {
-            Button("Cancel") {
-                withAnimation(.spring(duration: 0.3)) {
-                    dismiss()
-                }
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(isHoveringCancel ? .primary : .secondary)
-            .scaleEffect(isHoveringCancel ? 1.05 : 1.0)
-            .animation(.spring(duration: 0.2, bounce: 0.3), value: isHoveringCancel)
-            .onHover { hovering in
-                isHoveringCancel = hovering
-            }
-            .keyboardShortcut(.cancelAction)
+            Button("Cancel") { dismiss() }
+                .keyboardShortcut(.cancelAction)
 
             Spacer()
 
@@ -377,25 +323,16 @@ struct AddEditAccountView: View {
                         ProgressView()
                             .scaleEffect(0.7)
                         Text("Saving...")
-                            .font(.system(size: 13))
                     }
                     .frame(width: 90)
                 } else {
                     Text(mode.buttonTitle)
                         .frame(width: 90)
-                        .font(.system(size: 13, weight: .medium))
                 }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
             .disabled(!isValid || isSaving)
-            .scaleEffect(isHoveringSave && isValid && !isSaving ? 1.05 : 1.0)
-            .animation(.spring(duration: 0.2, bounce: 0.3), value: isHoveringSave)
-            .onHover { hovering in
-                if isValid && !isSaving {
-                    isHoveringSave = hovering
-                }
-            }
             .keyboardShortcut(.defaultAction)
         }
         .padding()
@@ -572,9 +509,6 @@ struct AddEditAccountView: View {
 
 struct TokenHelpView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("enableVisualEffects") private var enableVisualEffects = true
-    @State private var isHoveringClose = false
-    @State private var isHoveringLink = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -582,20 +516,11 @@ struct TokenHelpView: View {
                 Text("Personal Access Token")
                     .font(.headline)
                 Spacer()
-                Button(action: {
-                    withAnimation(.spring(duration: 0.3)) {
-                        dismiss()
-                    }
-                }) {
+                Button(action: { dismiss() }) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(isHoveringClose ? .primary : .secondary)
-                        .scaleEffect(isHoveringClose ? 1.1 : 1.0)
-                        .animation(.spring(duration: 0.2), value: isHoveringClose)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .onHover { hovering in
-                    isHoveringClose = hovering
-                }
             }
 
             Divider()
@@ -631,18 +556,10 @@ struct TokenHelpView: View {
                 Link("Open GitHub Settings", destination: URL(string: "https://github.com/settings/tokens")!)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
-                    .scaleEffect(isHoveringLink ? 1.05 : 1.0)
-                    .animation(.spring(duration: 0.2, bounce: 0.3), value: isHoveringLink)
-                    .onHover { hovering in
-                        isHoveringLink = hovering
-                    }
             }
         }
         .padding()
         .frame(width: 420, height: 370)
-        .modifier(ConditionalBackground(enableMaterial: enableVisualEffects, material: .ultraThin, fallbackColor: Color(nsColor: .windowBackgroundColor)))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
     }
 }
 

@@ -1,157 +1,106 @@
-# Claude Code - MUST be excluded for security
-.claude/
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-Icon
-._*
-.DocumentRevisions-V100
-.fseventsd
-.Spotlight-V100
-.TemporaryItems
-.Trashes
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-.com.apple.smb.streams.metadata
-
 # Xcode
-*.xcodeproj/*
-!*.xcodeproj/project.pbxproj
-!*.xcodeproj/xcshareddata/
-!*.xcodeproj/project.xcworkspace/
-!*.xcworkspace/contents.xcworkspacedata
+#
+# gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
+
+## User settings
 xcuserdata/
-*.xcuserstate
+
+## compatibility with Xcode 8 and earlier (ignoring not required starting Xcode 9)
 *.xcscmblueprint
 *.xccheckout
-*.xcbkptlist
-*.xcworkspace/xcuserdata/
+
+## compatibility with Xcode 3 and earlier (ignoring not required starting Xcode 4)
+build/
+DerivedData/
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+## Obj-C/Swift specific
+*.hmap
+
+## App packaging
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## Playgrounds
 timeline.xctimeline
 playground.xcworkspace
 
 # Swift Package Manager
+#
+# Add this line if you want to avoid checking in source code from Swift Package Manager dependencies.
+# Packages/
+# Package.pins
+# Package.resolved
+# *.xcodeproj
+#
+# Xcode automatically generates this directory with a .xcworkspacedata file and xcuserdata
+# hence it is not needed unless you have added a package configuration file to your project
+# .swiftpm
+
 .build/
-.swiftpm/
-Packages/
-Package.resolved
-*.xcodeproj
-.swiftpm/xcode/package.xcworkspace/
-*.swiftpm
-.build-repl/
 
 # CocoaPods
-Pods/
-*.podspec
+#
+# We recommend against adding the Pods directory to your .gitignore. However
+# you should judge for yourself, the pros and cons are mentioned at:
+# https://guides.cocoapods.org/using/using-cocoapods.html#should-i-check-the-pods-directory-into-source-control
+#
+# Pods/
+#
+# Add this line if you want to avoid checking in source code from the Xcode workspace
+# *.xcworkspace
 
 # Carthage
+#
+# Add this line if you want to avoid checking in source code from Carthage dependencies.
+# Carthage/Checkouts
+
 Carthage/Build/
-Carthage/Checkouts/
 
-# Build directories
-build/
-DerivedData/
-*.build/
-*.xcarchive
+# Accio dependency management
+Dependencies/
+.accio/
 
-# Instruments
-*.trace
+# fastlane
+#
+# It is recommended to not store the screenshots in the git repo.
+# Instead, use fastlane to re-generate the screenshots whenever they are needed.
+# For more information about the recommended setup visit:
+# https://docs.fastlane.tools/best-practices/source-control/#source-control
 
-# Fastlane (if used in future)
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
 
-# Code signing
-*.cer
-*.p12
-*.mobileprovision
-*.provisionprofile
+# Code Injection
+#
+# After new code Injection tools there's a generated folder /iOSInjectionProject
+# https://github.com/johnno1962/injectionforxcode
 
-# Sensitive data
-*.keystore
-*.jks
-*.key
-*.pem
-secrets.json
-config.local.json
+iOSInjectionProject/
+
+# XcodeGen - Ignore generated project files
+*.xcodeproj
+!*.xcodeproj/project.xcworkspace/xcshareddata
+
+# Backup of old project
+*.xcodeproj.backup
+
+# macOS
+.DS_Store
+
+# Security / Secrets
 .env
-.env.local
-.env.*.local
-**/secrets/
-**/*-token
-**/*-credentials
-credentials/
-tokens/
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.project
-.classpath
-.settings/
-
-# Logs
-*.log
-logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Temporary files
-*.tmp
-*.temp
-*.bak
-*.backup
-
-# Archives
-*.zip
-*.tar.gz
-*.dmg
-*.app.zip
-
-# Node modules (if using any)
-node_modules/
-
-# Python (if using any scripts)
-__pycache__/
-*.py[cod]
-*$py.class
-venv/
-.Python
-
-# Temporary files and debugging
-/temp/
-temp/
-**/temp/
-debug-*.swift
-debug-*.py
-test-*.swift
-analyze-*.sh
-*-debug.*
-*.debug
-
-# Don't ignore reports directory
-!reports/
-!reports/**
-
-# Don't ignore AGENTS.md and symlinks
-!AGENTS.md
-!CLAUDE.md
-!GEMINI.md
-!.clinerules
-!.cursorrules
-!.windsurfrules
-!.replit.md
-!.github/copilot-instructions.md
-!.idx/airules.md
+.env.*
+.dev.vars
+secrets.json
