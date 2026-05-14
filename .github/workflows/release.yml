@@ -56,9 +56,9 @@ jobs:
     if: needs.version.outputs.bump != 'none'
 
     env:
-      SCHEME: GitAccountSwitcher
-      APP_NAME: GitAccountSwitcher
-      APP_DIR: GitAccountSwitcher
+      SCHEME: GreatDeploy
+      APP_NAME: GreatDeploy
+      APP_DIR: .
       VERSION: ${{ needs.version.outputs.nextStrict }}
       TAG: ${{ needs.version.outputs.next }}
 
