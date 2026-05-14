@@ -46,7 +46,7 @@ struct GreatDeployApp: App {
         HStack(spacing: 4) {
             if let activeAccount = accountStore.activeAccount {
                 ZStack(alignment: .topTrailing) {
-                    Image(systemName: "person.crop.circle.badge.checkmark")
+                    Image(systemName: "number.circle.fill")
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(accountStore.profilePairStatus.needsAttention ? .red : .green)
 
@@ -62,7 +62,7 @@ struct GreatDeployApp: App {
                     .lineLimit(1)
                     .truncationMode(.tail)
             } else {
-                Image(systemName: "person.crop.circle.badge.questionmark")
+                Image(systemName: "number.circle")
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.secondary)
 
