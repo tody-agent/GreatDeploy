@@ -34,7 +34,7 @@ targets:
         PRODUCT_NAME: GreatDeploy
         PRODUCT_BUNDLE_IDENTIFIER: com.greatdeploy.app
         MARKETING_VERSION: 1.2.0
-        CURRENT_PROJECT_VERSION: "7"
+        CURRENT_PROJECT_VERSION: "8"
         INFOPLIST_FILE: GreatDeploy/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: "Great Deploy"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
