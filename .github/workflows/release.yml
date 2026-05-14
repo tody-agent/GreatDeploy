@@ -35,6 +35,7 @@ jobs:
         with:
           token: ${{ github.token }}
           branch: main
+          fallbackTag: 'v1.0.0'
           majorList: ''
           minorList: 'feat, feature'
           patchList: 'fix, bugfix, perf, refactor, test, tests, chore, docs, style, ci'
