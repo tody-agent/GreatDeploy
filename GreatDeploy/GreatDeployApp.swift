@@ -45,9 +45,17 @@ struct GreatDeployApp: App {
     private var menuBarLabel: some View {
         HStack(spacing: 4) {
             if let activeAccount = accountStore.activeAccount {
-                Image(systemName: "person.crop.circle.badge.checkmark")
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.green)
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "person.crop.circle.badge.checkmark")
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(accountStore.profilePairStatus.needsAttention ? .red : .green)
+
+                    if accountStore.profilePairStatus.needsAttention {
+                        Circle()
+                            .fill(.red)
+                            .frame(width: 6, height: 6)
+                    }
+                }
 
                 Text(activeAccount.displayName)
                     .font(.caption)
@@ -180,7 +188,7 @@ struct MenuBarContentView: View {
                 Spacer()
 
                 Circle()
-                    .fill(accountStore.activeAccount != nil ? Color.green : Color.gray)
+                    .fill(statusDotColor)
                     .frame(width: 10, height: 10)
             }
             .padding()
@@ -240,6 +248,13 @@ struct MenuBarContentView: View {
             AddEditAccountView(mode: .add)
                 .environmentObject(accountStore)
         }
+    }
+
+    private var statusDotColor: Color {
+        if accountStore.profilePairStatus.needsAttention {
+            return .red
+        }
+        return accountStore.activeAccount != nil ? .green : .gray
     }
 
     private func switchToAccount(_ account: DevProfile) async {
@@ -417,6 +432,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false // Keep running in menu bar
+    }
+
+    /// SECURITY (SEC-02): Clear Cloudflare environment variables on app termination
+    /// to prevent tokens from persisting in the GUI session environment after quit.
+    func applicationWillTerminate(_ notification: Notification) {
+        // Best-effort async cleanup — fire and forget since the app is terminating
+        let semaphore = DispatchSemaphore(value: 0)
+        Task {
+            try? await CloudflareAdapter.shared.clearCredentials()
+            semaphore.signal()
+        }
+        // Wait briefly to allow cleanup to complete
+        _ = semaphore.wait(timeout: .now() + 2.0)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

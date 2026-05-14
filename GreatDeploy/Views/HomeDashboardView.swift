@@ -99,9 +99,15 @@ struct HomeDashboardView: View {
                                 title: "Active Profile",
                                 icon: "person.crop.circle.fill",
                                 statusText: accountStore.activeAccount?.displayName ?? "Not selected",
-                                statusColor: accountStore.activeAccount != nil ? .green : .orange,
+                                statusColor: accountStore.profilePairStatus.needsAttention ? .red : (accountStore.activeAccount != nil ? .green : .orange),
                                 gradientColors: [.green, .blue]
                             )
+                        }
+
+                        if case .outOfSync(let message) = accountStore.profilePairStatus {
+                            Label(message, systemImage: "exclamationmark.circle.fill")
+                                .font(.callout)
+                                .foregroundStyle(.red)
                         }
                     }
                     

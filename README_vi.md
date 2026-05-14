@@ -59,6 +59,25 @@ Không cần múa phím trên terminal nữa. Chào tạm biệt những lần c
 
 ## Cài đặt
 
+### Bản ad-hoc để chia sẻ giữa các máy cá nhân
+
+Dùng cách này khi bạn muốn tạo bản miễn phí để copy sang máy Mac khác, không cần Apple Developer ID:
+
+```bash
+make package-ad-hoc
+```
+
+File package sẽ nằm trong `dist/` với tên `GreatDeploy-<version>-macos-ad-hoc.zip`. App được ký ad-hoc và không notarized, nên lần mở đầu tiên có thể cần right-click -> **Open** hoặc vào **System Settings -> Privacy & Security -> Open Anyway**.
+
+Nếu macOS báo app bị damaged sau khi copy vào `/Applications`, chạy:
+
+```bash
+xattr -cr /Applications/GreatDeploy.app
+open /Applications/GreatDeploy.app
+```
+
+Xem thêm `docs/INSTALL_ADHOC.md`; file này cũng được đóng gói kèm trong ZIP.
+
 ### Cách 1: Build từ Terminal (Khuyên dùng)
 
 ```bash

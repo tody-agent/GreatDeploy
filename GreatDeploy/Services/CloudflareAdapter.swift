@@ -10,15 +10,18 @@ final class CloudflareAdapter: CloudflareAdapting {
     private let homeDirectory: URL
     private let fileManager: FileManager
     private let launchctlRunner: ((String, [String]) throws -> Void)?
+    private let launchctlEnvironmentReader: ((String) -> String?)?
 
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         fileManager: FileManager = .default,
-        launchctlRunner: ((String, [String]) throws -> Void)? = nil
+        launchctlRunner: ((String, [String]) throws -> Void)? = nil,
+        launchctlEnvironmentReader: ((String) -> String?)? = nil
     ) {
         self.homeDirectory = homeDirectory
         self.fileManager = fileManager
         self.launchctlRunner = launchctlRunner
+        self.launchctlEnvironmentReader = launchctlEnvironmentReader
     }
     
     /// Applies the Cloudflare token and account ID to the system
@@ -41,6 +44,41 @@ final class CloudflareAdapter: CloudflareAdapting {
     /// Clear all Cloudflare credentials
     func clearCredentials(syncWranglerConfig: Bool = false) async throws {
         try await applyToken("", accountId: "", syncWranglerConfig: syncWranglerConfig)
+    }
+
+    /// Reads the Cloudflare account ID visible to GUI apps via launchctl.
+    func currentAccountId() async -> String? {
+        if let launchctlEnvironmentReader {
+            return launchctlEnvironmentReader("CLOUDFLARE_ACCOUNT_ID")
+        }
+
+        return await Task<String?, Never>.detached(priority: .utility) { () -> String? in
+            let process = Process()
+            let pipe = Pipe()
+
+            process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            process.arguments = ["getenv", "CLOUDFLARE_ACCOUNT_ID"]
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+
+            do {
+                try process.run()
+                let completed = process.waitUntilExitOrTimeout(seconds: 5)
+                guard completed, process.terminationStatus == 0 else {
+                    if !completed {
+                        process.terminate()
+                    }
+                    return nil
+                }
+
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let value = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                return value?.isEmpty == false ? value : nil
+            } catch {
+                return nil
+            }
+        }.value
     }
 
     private func updateLaunchctlEnvironment(token: String, accountId: String) throws {

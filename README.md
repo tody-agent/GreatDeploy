@@ -60,6 +60,25 @@ No more terminal gymnastics. No more wrong account commits.
 
 ## Installation
 
+### Shareable Ad-Hoc Build (Private Macs)
+
+Use this path when you want a free build that can be copied to another Mac without an Apple Developer ID:
+
+```bash
+make package-ad-hoc
+```
+
+The package is created in `dist/` as `GreatDeploy-<version>-macos-ad-hoc.zip`. It is signed with an ad-hoc signature and is not notarized, so the first launch may require right-click -> **Open** or **System Settings -> Privacy & Security -> Open Anyway**.
+
+If macOS says the app is damaged after copying it to `/Applications`, clear quarantine:
+
+```bash
+xattr -cr /Applications/GreatDeploy.app
+open /Applications/GreatDeploy.app
+```
+
+See `docs/INSTALL_ADHOC.md` for the short install note included in the ZIP.
+
 ### Option 1: Build from Command Line (Recommended)
 
 ```bash

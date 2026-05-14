@@ -21,6 +21,7 @@ final class AccountStore: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var lastError: Error?
     @Published private(set) var currentGitConfig: (name: String?, email: String?) = (nil, nil)
+    @Published private(set) var profilePairStatus: ProfilePairStatus = .unknown
 
     /// Status of the last GitHub CLI account switch attempt
     enum CLISwitchStatus: Equatable {
@@ -30,6 +31,19 @@ final class AccountStore: ObservableObject {
         case accountNotInCLI(String)
         case notLoggedIn
         case failed(String)
+    }
+
+    enum ProfilePairStatus: Equatable {
+        case unknown
+        case inSync
+        case outOfSync(String)
+
+        var needsAttention: Bool {
+            if case .outOfSync = self {
+                return true
+            }
+            return false
+        }
     }
 
     @Published private(set) var lastCLISwitchStatus: CLISwitchStatus = .none
@@ -47,6 +61,7 @@ final class AccountStore: ObservableObject {
     /// Task handle for the current account switch operation
     /// Ensures serial execution: new switches wait for the previous to complete
     private var currentSwitchTask: Task<Void, Error>?
+    private var externalStateMonitorTask: Task<Void, Never>?
 
     // MARK: - Storage Keys
 
@@ -102,11 +117,28 @@ final class AccountStore: ObservableObject {
             // Restore active account credential to keychain on app startup
             await restoreActiveAccountCredential()
             await refreshCurrentGitConfig()
+            await refreshProfilePairStatus()
         }
+
+        startExternalStateMonitoring()
     }
 
     private var syncCloudflareToWranglerConfig: Bool {
         userDefaults.bool(forKey: syncCloudflareToWranglerConfigKey)
+    }
+
+    deinit {
+        externalStateMonitorTask?.cancel()
+    }
+
+    private func startExternalStateMonitoring() {
+        externalStateMonitorTask?.cancel()
+        externalStateMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                await self?.refreshProfilePairStatus()
+            }
+        }
     }
 
     /// Ensures git credential helper is configured for osxkeychain
@@ -441,6 +473,7 @@ final class AccountStore: ObservableObject {
 
                 // Refresh current config
                 await refreshCurrentGitConfig()
+                await refreshProfilePairStatus()
 
                 // Switch GitHub CLI account in background (non-blocking)
                 // This is best-effort and won't fail the switch if CLI is not set up
@@ -468,6 +501,43 @@ final class AccountStore: ObservableObject {
         } catch {
             currentGitConfig = (nil, nil)
         }
+    }
+
+    /// Checks whether the active GitHub and Cloudflare system credentials still match the active profile.
+    func refreshProfilePairStatus() async {
+        guard !isLoading else { return }
+        guard let active = activeAccount else {
+            profilePairStatus = .unknown
+            return
+        }
+
+        do {
+            if let credential = try keychainService.readGitHubCredential(),
+               credential.username.caseInsensitiveCompare(active.githubUsername) != .orderedSame {
+                profilePairStatus = .outOfSync("GitHub is using @\(credential.username), but active profile is @\(active.githubUsername).")
+                return
+            }
+        } catch {
+            profilePairStatus = .outOfSync("Could not verify GitHub credential state.")
+            return
+        }
+
+        let expectedCloudflareAccountId = active.cloudflareAccountId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentCloudflareAccountId = await cloudflareAdapter.currentAccountId() ?? ""
+
+        if !expectedCloudflareAccountId.isEmpty,
+           currentCloudflareAccountId.caseInsensitiveCompare(expectedCloudflareAccountId) != .orderedSame {
+            let current = currentCloudflareAccountId.isEmpty ? "not set" : currentCloudflareAccountId
+            profilePairStatus = .outOfSync("Cloudflare is using \(current), but active profile expects \(expectedCloudflareAccountId).")
+            return
+        }
+
+        if expectedCloudflareAccountId.isEmpty, !currentCloudflareAccountId.isEmpty {
+            profilePairStatus = .outOfSync("Cloudflare is set to \(currentCloudflareAccountId), but active profile has no Cloudflare account.")
+            return
+        }
+
+        profilePairStatus = .inSync
     }
 
     /// Switches the GitHub CLI account and reports status via lastCLISwitchStatus
@@ -634,20 +704,6 @@ extension AccountStore {
 
     /// Syncs accounts with current system keychain state
     func syncWithSystemKeychain() async {
-        do {
-            // Get current credential from system keychain
-            if let credential = try keychainService.readGitHubCredential() {
-                // Find matching account and mark as active
-                for i in accounts.indices {
-                    let isMatch = accounts[i].githubUsername.lowercased() == credential.username.lowercased()
-                    if accounts[i].isActive != isMatch {
-                        accounts[i].isActive = isMatch
-                    }
-                }
-                saveAccounts()
-            }
-        } catch {
-            // Ignore errors during sync
-        }
+        await refreshProfilePairStatus()
     }
 }

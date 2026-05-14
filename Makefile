@@ -1,4 +1,4 @@
-.PHONY: test test-gate
+.PHONY: test test-gate build-release package-ad-hoc
 
 test:
 	xcodegen
@@ -16,3 +16,6 @@ build-release:
 	@echo "Zipping the app for deployment..."
 	cd build/Release && zip -ry ../GreatDeploy-macOS-Release.zip GreatDeploy.app
 	@echo "Deployment package created at build/GreatDeploy-macOS-Release.zip"
+
+package-ad-hoc:
+	./script/package_ad_hoc.sh

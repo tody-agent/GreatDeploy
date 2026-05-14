@@ -18,7 +18,9 @@ final class AccountStoreCoreTests: XCTestCase {
             githubUsername: "work",
             personalAccessToken: "token-work-123456789",
             gitUserName: "Work User",
-            gitUserEmail: "work@example.com"
+            gitUserEmail: "work@example.com",
+            cloudflareAccountId: "cf-work-account",
+            cloudflareApiToken: "cf-work-token-123456789"
         )
 
         try harness.store.addAccount(first)
@@ -32,6 +34,43 @@ final class AccountStoreCoreTests: XCTestCase {
         XCTAssertEqual(harness.gitConfig.currentConfig.email, "work@example.com")
         XCTAssertEqual(harness.store.activeAccount?.githubUsername, "work")
         XCTAssertEqual(harness.gitHubCLI.switchedUsernames, ["work"])
+        XCTAssertEqual(harness.cloudflare.currentAccountIdValue, "cf-work-account")
+        XCTAssertEqual(harness.cloudflare.appliedTokens.last?.accountId, "cf-work-account")
+    }
+
+    func testExternalCloudflareMismatchShowsOutOfSyncWithoutChangingActiveAccount() async throws {
+        let harness = StoreHarness()
+        let tody = DevProfile(
+            displayName: "Tody",
+            githubUsername: "tody-agent",
+            personalAccessToken: "token-tody-123456789",
+            gitUserName: "tody-agent",
+            gitUserEmail: "tracuuphat@gmail.com",
+            cloudflareAccountId: "5a183e617c2e686d9b59b6b75b398b58",
+            cloudflareApiToken: "cf-token-tody-123456789"
+        )
+        let bm = DevProfile(
+            displayName: "BM",
+            githubUsername: "omisocial",
+            personalAccessToken: "token-bm-123456789",
+            gitUserName: "hailm",
+            gitUserEmail: "hailm@boxme.asia",
+            cloudflareAccountId: "fa5ac755c5a60634abdecf0daacd23b5",
+            cloudflareApiToken: "cf-token-bm-123456789"
+        )
+
+        try harness.store.addAccount(tody)
+        try harness.store.addAccount(bm)
+        let liveBM = try XCTUnwrap(harness.store.accounts.first { $0.githubUsername == "omisocial" })
+        try await harness.store.switchToAccount(liveBM)
+
+        harness.keychain.gitHubCredential = (username: "omisocial", token: "token-bm-123456789")
+        harness.cloudflare.currentAccountIdValue = "5a183e617c2e686d9b59b6b75b398b58"
+
+        await harness.store.syncWithSystemKeychain()
+
+        XCTAssertEqual(harness.store.activeAccount?.githubUsername, "omisocial")
+        XCTAssertTrue(harness.store.profilePairStatus.needsAttention)
     }
 
     func testSwitchMissingTokenDoesNotChangeState() async throws {
@@ -267,6 +306,7 @@ private final class FakeCloudflareAdapter: CloudflareAdapting {
     var failNextNonEmptyApply = false
     var appliedTokens: [(token: String, accountId: String, syncWranglerConfig: Bool)] = []
     var didClearCredentials = false
+    var currentAccountIdValue: String?
 
     func applyToken(_ token: String, accountId: String, syncWranglerConfig: Bool) async throws {
         if failNextNonEmptyApply && !token.isEmpty {
@@ -275,6 +315,7 @@ private final class FakeCloudflareAdapter: CloudflareAdapting {
         }
 
         appliedTokens.append((token, accountId, syncWranglerConfig))
+        currentAccountIdValue = accountId.isEmpty ? nil : accountId
         if token.isEmpty && accountId.isEmpty {
             didClearCredentials = true
         }
@@ -282,7 +323,12 @@ private final class FakeCloudflareAdapter: CloudflareAdapting {
 
     func clearCredentials(syncWranglerConfig: Bool) async throws {
         didClearCredentials = true
+        currentAccountIdValue = nil
         appliedTokens.append(("", "", syncWranglerConfig))
+    }
+
+    func currentAccountId() async -> String? {
+        currentAccountIdValue
     }
 }
 

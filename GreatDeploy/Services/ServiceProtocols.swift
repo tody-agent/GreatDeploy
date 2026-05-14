@@ -30,5 +30,5 @@ protocol GitHubCLIServicing {
 protocol CloudflareAdapting {
     func applyToken(_ token: String, accountId: String, syncWranglerConfig: Bool) async throws
     func clearCredentials(syncWranglerConfig: Bool) async throws
+    func currentAccountId() async -> String?
 }
-

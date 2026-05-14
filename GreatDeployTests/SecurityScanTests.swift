@@ -58,7 +58,10 @@ final class SecurityScanTests: XCTestCase {
             "SERVICE_KEY\\s*[=:]\\s*['\"][a-zA-Z0-9/+=]{20,}['\"]",
             "-----BEGIN.*PRIVATE KEY-----",
             "(?i)api[_-]?key\\s*[=:]\\s*['\"][a-zA-Z0-9]{30,}['\"]",
-            "ghp_[a-zA-Z0-9]{36}" // GitHub Personal Access Token pattern
+            "ghp_[a-zA-Z0-9]{36}",                                         // GitHub Classic PAT
+            "github_pat_[a-zA-Z0-9_]{82}",                                 // GitHub Fine-grained PAT
+            "(?i)cloudflare[_-]?api[_-]?token\\s*[=:]\\s*['\"][a-zA-Z0-9_-]{40,}['\"]", // Cloudflare API Token (SEC-04)
+            "AKIA[0-9A-Z]{16}"                                             // AWS Access Key ID
         ]
         
         let compiledPatterns = dangerousPatterns.compactMap { try? NSRegularExpression(pattern: $0) }

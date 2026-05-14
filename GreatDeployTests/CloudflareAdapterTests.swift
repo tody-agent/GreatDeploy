@@ -44,6 +44,15 @@ final class CloudflareAdapterTests: XCTestCase {
         try await harness.adapter.clearCredentials(syncWranglerConfig: true)
         XCTAssertFalse(FileManager.default.fileExists(atPath: harness.configFile.path))
     }
+
+    func testCurrentAccountIdReadsLaunchctlEnvironment() async throws {
+        let harness = try AdapterHarness()
+
+        try await harness.adapter.applyToken("token-123", accountId: "account-id", syncWranglerConfig: false)
+
+        let accountId = await harness.adapter.currentAccountId()
+        XCTAssertEqual(accountId, "account-id")
+    }
 }
 
 private final class AdapterHarness {
@@ -64,9 +73,16 @@ private final class AdapterHarness {
             .appendingPathComponent(".wrangler/config", isDirectory: true)
             .appendingPathComponent("default.toml")
 
-        adapter = CloudflareAdapter(homeDirectory: homeDirectory) { [recorder] path, arguments in
-            recorder.calls.append((path, arguments))
-        }
+        adapter = CloudflareAdapter(
+            homeDirectory: homeDirectory,
+            launchctlRunner: { [recorder] path, arguments in
+                recorder.calls.append((path, arguments))
+                recorder.apply(arguments: arguments)
+            },
+            launchctlEnvironmentReader: { [recorder] name in
+                recorder.environment[name]
+            }
+        )
     }
 
     deinit {
@@ -76,4 +92,18 @@ private final class AdapterHarness {
 
 private final class LaunchctlCallRecorder {
     var calls: [(path: String, arguments: [String])] = []
+    var environment: [String: String] = [:]
+
+    func apply(arguments: [String]) {
+        guard arguments.count >= 2 else { return }
+
+        switch arguments[0] {
+        case "setenv" where arguments.count >= 3:
+            environment[arguments[1]] = arguments[2]
+        case "unsetenv":
+            environment[arguments[1]] = nil
+        default:
+            break
+        }
+    }
 }
