@@ -21,6 +21,7 @@ jobs:
     name: Calculate Next Version
     runs-on: ubuntu-latest
     outputs:
+      has_new_commits: ${{ steps.check-commits.outputs.has_new_commits }}
       next: ${{ steps.semver.outputs.next }}
       nextStrict: ${{ steps.semver.outputs.nextStrict }}
       bump: ${{ steps.semver.outputs.bump }}
@@ -29,7 +30,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Calculate next version
+      - name: Check if there are new commits since last tag
+        id: check-commits
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+          echo "Latest tag: $LATEST_TAG"
+          
+          if [ "$LATEST_TAG" != "none" ]; then
+            COMMIT_COUNT=$(git log "$LATEST_TAG..HEAD" --oneline | wc -l | tr -d ' ')
+            echo "Commits since last tag: $COMMIT_COUNT"
+            echo "has_new_commits=$([ "$COMMIT_COUNT" -gt 0 ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          else
+            echo "No previous tags found, treating as new release"
+            echo "has_new_commits=true" >> $GITHUB_OUTPUT
+          fi
+
+- name: Calculate next version
         id: semver
         uses: ietf-tools/semver-action@v1
         with:
@@ -39,12 +55,20 @@ jobs:
           majorList: ''
           minorList: 'feat, feature'
           patchList: 'fix, bugfix, perf, refactor, test, tests, chore, docs, style, ci'
+          noVersionBumpBehavior: silent
 
       - name: Log version decision
+        if: steps.check-commits.outputs.has_new_commits == 'true'
         run: |
           echo "Current version: ${{ steps.semver.outputs.current }}"
           echo "Next version: ${{ steps.semver.outputs.next }}"
           echo "Bump type: ${{ steps.semver.outputs.bump }}"
+
+      - name: No new commits - skip release
+        if: steps.check-commits.outputs.has_new_commits == 'false'
+        run: |
+          echo "No new commits since last tag. Skipping release."
+          echo "::notice title=No Release Needed::No commits since last tag - CI was likely re-triggered without changes"
 
   # ─────────────────────────────────────────────────────────────
   # JOB 2: Build, package, and release
@@ -53,7 +77,7 @@ jobs:
     name: Build and Release macOS App
     runs-on: macos-14
     needs: version
-    if: needs.version.outputs.bump != 'none'
+    if: needs.version.outputs.has_new_commits == 'true' && needs.version.outputs.bump != 'none'
 
     env:
       SCHEME: GreatDeploy
