@@ -45,7 +45,7 @@ jobs:
             echo "has_new_commits=true" >> $GITHUB_OUTPUT
           fi
 
-- name: Calculate next version
+      - name: Calculate next version
         id: semver
         uses: ietf-tools/semver-action@v1
         with:
