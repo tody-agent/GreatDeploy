@@ -5,6 +5,29 @@ All notable changes to GreatDeploy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-05-18
+
+### Added
+- MCP server management across 9 AI coding tools (Claude Desktop, Cursor, VS Code, Claude Code, Windsurf, Zed, JetBrains, Codex, Antigravity)
+- Merge-based sync: preserves user-added servers, removes orphans
+- Secret injection from Keychain at sync time
+- Verify-after-write with automatic rollback
+- Smithery Registry browse and install
+- File watcher for external config changes
+- Multi-device sync via iCloud (KVS + CloudKit)
+- Conflict resolution (per-server timestamp comparison)
+- Audit logging (no secrets)
+- Platform abstraction layer (Linux/Windows ready)
+
+### Changed
+- Refactored services through protocol layer (SecretStore, FileSystem, ProcessRunner)
+- Added mcpBundleId to DevProfile with automatic migration
+
+### Security
+- Secret values never serialized to disk
+- Secret values never logged
+- iCloud sync excludes secrets (metadata only)
+
 ## [1.2.0] - 2026-05-14
 
 ### Fixed

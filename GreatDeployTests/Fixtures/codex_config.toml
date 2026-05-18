@@ -1,0 +1,12 @@
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/Users/test"]
+
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@mcp/github"]
+env = { GITHUB_TOKEN = "ghp_xxx" }
+
+[mcp_servers.user-codex-server]
+command = "echo"
+args = ["codex-specific"]

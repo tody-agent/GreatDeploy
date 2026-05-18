@@ -1,0 +1,18 @@
+{
+  "theme": "dark",
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/test"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@mcp/github"],
+      "env": {"GITHUB_TOKEN": "ghp_xxx"}
+    },
+    "user-added-server": {
+      "command": "echo",
+      "args": ["hello"]
+    }
+  }
+}

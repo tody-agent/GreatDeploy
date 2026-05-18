@@ -14,6 +14,7 @@ struct DevProfile: Identifiable, Equatable, Hashable, Sendable {
     var isActive: Bool
     var createdAt: Date
     var lastUsedAt: Date?
+    var mcpBundleId: UUID?
 
     init(
         id: UUID = UUID(),
@@ -26,7 +27,8 @@ struct DevProfile: Identifiable, Equatable, Hashable, Sendable {
         cloudflareApiToken: String = "",
         isActive: Bool = false,
         createdAt: Date = Date(),
-        lastUsedAt: Date? = nil
+        lastUsedAt: Date? = nil,
+        mcpBundleId: UUID? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -39,6 +41,7 @@ struct DevProfile: Identifiable, Equatable, Hashable, Sendable {
         self.isActive = isActive
         self.createdAt = createdAt
         self.lastUsedAt = lastUsedAt
+        self.mcpBundleId = mcpBundleId
     }
 
     /// Creates a copy with updated active state
@@ -59,7 +62,7 @@ extension DevProfile: Codable {
         // SECURITY: personalAccessToken is intentionally EXCLUDED.
         // PATs and Cloudflare tokens are stored exclusively in the macOS Keychain via KeychainService.
         case id, displayName, githubUsername
-        case gitUserName, gitUserEmail, cloudflareAccountId, isActive, createdAt, lastUsedAt
+        case gitUserName, gitUserEmail, cloudflareAccountId, isActive, createdAt, lastUsedAt, mcpBundleId
     }
 
     init(from decoder: Decoder) throws {
@@ -76,6 +79,7 @@ extension DevProfile: Codable {
         isActive = try container.decode(Bool.self, forKey: .isActive)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt)
+        mcpBundleId = try container.decodeIfPresent(UUID.self, forKey: .mcpBundleId)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -90,6 +94,7 @@ extension DevProfile: Codable {
         try container.encode(isActive, forKey: .isActive)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encodeIfPresent(lastUsedAt, forKey: .lastUsedAt)
+        try container.encodeIfPresent(mcpBundleId, forKey: .mcpBundleId)
     }
 }
 
@@ -166,6 +171,7 @@ extension DevProfile: CustomDebugStringConvertible, CustomStringConvertible {
             isActive: \(isActive)
             createdAt: \(createdAt)
             lastUsedAt: \(lastUsedAt?.description ?? "nil")
+            mcpBundleId: \(mcpBundleId?.uuidString ?? "nil")
         }
         """
     }

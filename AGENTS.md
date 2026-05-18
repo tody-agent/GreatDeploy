@@ -255,6 +255,22 @@ GitAccountSwitcher/
 └── docs/                              # Additional documentation
 ```
 
+### New MCP Directory Structure (v1.5.0+)
+
+```
+GreatDeploy/
+├── MCP/
+│   ├── Models/           # MCPServerDefinition, MCPBundle, etc.
+│   ├── Adapters/         # 9 client adapters + protocol
+│   ├── Serializers/      # JSONMerger, TOMLSerializer, XMLSerializer
+│   ├── Sync/             # MCPSyncEngine, MCPSyncAdapter, AuditLogger
+│   ├── Registry/         # SmitheryClient
+│   ├── Watcher/          # MCPFileWatcher
+│   └── Views/            # UI views for MCP management
+├── Sync/                 # Multi-device sync (iCloud/CloudKit)
+└── Platform/             # Platform abstraction (MacPlatform, stubs)
+```
+
 ### Service Layer Pattern
 
 **KeychainService** (Singleton):

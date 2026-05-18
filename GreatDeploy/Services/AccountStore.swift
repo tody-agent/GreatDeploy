@@ -67,6 +67,7 @@ final class AccountStore: ObservableObject {
 
     private let accountsStorageKey = "savedAccounts"
     private let migrationCompleteKey = "keychainMigrationComplete_v1"
+    private let mcpMigrationCompleteKey = "mcpMigrationComplete_v1"
     private let syncCloudflareToWranglerConfigKey = "syncCloudflareToWranglerConfig"
 
     // MARK: - Performance Cache
@@ -616,6 +617,8 @@ final class AccountStore: ObservableObject {
             Self.logger.error("Failed to decode saved accounts: \(error)")
             accounts = []
         }
+
+        migrateToMCPBundles()
     }
 
     /// Migrates legacy accounts that had PATs stored in UserDefaults to Keychain-only storage.
@@ -654,6 +657,9 @@ final class AccountStore: ObservableObject {
 
             Self.logger.info("Successfully migrated \(legacyAccounts.count) account(s) to Keychain-only storage")
 
+            // Also run MCP bundle migration for newly migrated accounts
+            migrateToMCPBundles()
+
         } catch {
             // Migration failed — try loading with new format as fallback
             Self.logger.warning("Legacy migration failed, trying new format: \(error)")
@@ -671,6 +677,38 @@ final class AccountStore: ObservableObject {
                 accounts = []
             }
         }
+    }
+
+    /// Migrates existing profiles to have MCP bundle IDs.
+    /// Runs once per profile set — idempotent and creates backup before changes.
+    private func migrateToMCPBundles() {
+        let mcpMigrationComplete = userDefaults.bool(forKey: mcpMigrationCompleteKey)
+        guard !mcpMigrationComplete else { return }
+
+        Self.logger.info("Starting MCP bundle migration for existing profiles...")
+
+        var needsSave = false
+
+        for i in accounts.indices {
+            if accounts[i].mcpBundleId == nil {
+                accounts[i].mcpBundleId = UUID()
+                needsSave = true
+                Self.logger.info("Created MCP bundle ID for profile: \(self.accounts[i].displayName)")
+            }
+        }
+
+        if needsSave {
+            if let data = userDefaults.data(forKey: accountsStorageKey) {
+                let timestamp = ISO8601DateFormatter().string(from: Date())
+                let backupKey = "profiles.json.bak.\(timestamp)"
+                userDefaults.set(data, forKey: backupKey)
+            }
+
+            saveAccounts()
+        }
+
+        userDefaults.set(true, forKey: mcpMigrationCompleteKey)
+        Self.logger.info("MCP bundle migration complete")
     }
 
     // MARK: - Error Types

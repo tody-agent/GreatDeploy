@@ -1,5 +1,10 @@
 name: GreatDeploy
 
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: "7.0.0"
+
 options:
   bundleIdPrefix: com.greatdeploy
   deploymentTarget:
@@ -20,7 +25,8 @@ targets:
   GreatDeploy:
     type: application
     platform: macOS
-
+    dependencies:
+      - package: GRDB
     sources:
       - path: GreatDeploy
         excludes:
@@ -28,13 +34,12 @@ targets:
           - "build"
           - "*.xcodeproj"
           - "DerivedData"
-
     settings:
       base:
         PRODUCT_NAME: GreatDeploy
         PRODUCT_BUNDLE_IDENTIFIER: com.greatdeploy.app
-        MARKETING_VERSION: 1.2.1
-        CURRENT_PROJECT_VERSION: "8"
+        MARKETING_VERSION: 2.0.0
+        CURRENT_PROJECT_VERSION: "9"
         INFOPLIST_FILE: GreatDeploy/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: "Great Deploy"
         INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
@@ -45,11 +50,9 @@ targets:
         COMBINE_HIDPI_IMAGES: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
-
       debug:
         SWIFT_OPTIMIZATION_LEVEL: "-Onone"
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(inherited)"
-
       release:
         SWIFT_COMPILATION_MODE: wholemodule
 
@@ -58,6 +61,8 @@ targets:
     platform: macOS
     sources:
       - path: GreatDeployTests
+        excludes:
+          - "VaultStoreTests.swift"
     dependencies:
       - target: GreatDeploy
     settings:

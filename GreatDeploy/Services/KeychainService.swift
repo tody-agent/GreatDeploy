@@ -570,6 +570,149 @@ final class KeychainService: KeychainServicing {
             throw KeychainError.unexpectedStatus(status)
         }
     }
+
+    // MARK: - Per-Server MCP Secret Storage (Keychain-only)
+    //
+    // SECURITY: MCP server env secrets are stored as separate kSecClassGenericPassword
+    // entries in the Keychain, namespaced by bundle ID and server ID.
+    // Namespace format: greatdeploy.mcp.<bundleId>.<serverId>.<envKey>
+
+    /// Service name for MCP secret storage in Keychain.
+    private let mcpSecretService = "greatdeploy.mcp"
+
+    /// Saves an MCP server secret in the Keychain.
+    /// - Parameters:
+    ///   - bundleId: The bundle's UUID
+    ///   - serverId: The server's UUID
+    ///   - envKey: The environment variable key name
+    ///   - value: The secret value to store
+    func saveMCPSecret(bundleId: UUID, serverId: UUID, envKey: String, value: String) throws {
+        guard let valueData = value.data(using: .utf8) else {
+            throw KeychainError.encodingFailed
+        }
+
+        let accountKey = mcpAccountKey(bundleId: bundleId, serverId: serverId, envKey: envKey)
+
+        // Delete any existing entry first
+        try? deleteMCPSecret(bundleId: bundleId, serverId: serverId, envKey: envKey)
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: mcpSecretService,
+            kSecAttrAccount as String: accountKey,
+            kSecValueData as String: valueData,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+
+        if status == errSecDuplicateItem {
+            let searchQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: mcpSecretService,
+                kSecAttrAccount as String: accountKey
+            ]
+            let attrs: [String: Any] = [kSecValueData as String: valueData]
+            let updateStatus = SecItemUpdate(searchQuery as CFDictionary, attrs as CFDictionary)
+            guard updateStatus == errSecSuccess else {
+                throw KeychainError.unexpectedStatus(updateStatus)
+            }
+        } else if status != errSecSuccess {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    /// Reads an MCP server secret from the Keychain.
+    /// - Parameters:
+    ///   - bundleId: The bundle's UUID
+    ///   - serverId: The server's UUID
+    ///   - envKey: The environment variable key name
+    /// - Returns: The stored secret value, or nil if not found
+    func readMCPSecret(bundleId: UUID, serverId: UUID, envKey: String) -> String? {
+        let accountKey = mcpAccountKey(bundleId: bundleId, serverId: serverId, envKey: envKey)
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: mcpSecretService,
+            kSecAttrAccount as String: accountKey,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnData as String: true
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let tokenData = result as? Data,
+              let token = String(data: tokenData, encoding: .utf8) else {
+            return nil
+        }
+
+        return token
+    }
+
+    /// Deletes an MCP server secret from the Keychain.
+    func deleteMCPSecret(bundleId: UUID, serverId: UUID, envKey: String) throws {
+        let accountKey = mcpAccountKey(bundleId: bundleId, serverId: serverId, envKey: envKey)
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: mcpSecretService,
+            kSecAttrAccount as String: accountKey
+        ]
+
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    /// Deletes ALL MCP secrets for a bundle (bulk cleanup on bundle deletion).
+    func deleteAllMCPSecrets(bundleId: UUID) throws {
+        let servicePrefix = "greatdeploy.mcp.\(bundleId.uuidString)."
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: mcpSecretService,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: true
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        if status == errSecItemNotFound {
+            return
+        }
+
+        guard status == errSecSuccess else {
+            throw KeychainError.unexpectedStatus(status)
+        }
+
+        guard let items = result as? [[String: Any]] else {
+            return
+        }
+
+        for item in items {
+            guard let account = item[kSecAttrAccount as String] as? String,
+                  account.hasPrefix(servicePrefix) else {
+                continue
+            }
+
+            let deleteQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: mcpSecretService,
+                kSecAttrAccount as String: account
+            ]
+            _ = SecItemDelete(deleteQuery as CFDictionary)
+        }
+    }
+
+    /// Helper to generate the Keychain account key for an MCP secret.
+    /// Format: greatdeploy.mcp.<bundleId>.<serverId>.<envKey>
+    private func mcpAccountKey(bundleId: UUID, serverId: UUID, envKey: String) -> String {
+        "greatdeploy.mcp.\(bundleId.uuidString).\(serverId.uuidString).\(envKey)"
+    }
 }
 
 // MARK: - Process Timeout Extension
@@ -588,5 +731,151 @@ extension Process {
 
         let result = semaphore.wait(timeout: .now() + seconds)
         return result == .success
+    }
+}
+
+// MARK: - SecretStore Conformance
+
+extension KeychainService: SecretStore {
+    func read(service: String, account: String) throws -> String? {
+        switch service {
+        case accountTokenService:
+            guard let accountId = UUID(uuidString: account) else { return nil }
+            return readAccountToken(accountId: accountId)
+        case cloudflareTokenService:
+            guard let accountId = UUID(uuidString: account) else { return nil }
+            return readCloudflareToken(accountId: accountId)
+        default:
+            return try readGenericSecret(service: service, account: account)
+        }
+    }
+
+    func write(service: String, account: String, value: String) throws {
+        switch service {
+        case accountTokenService:
+            guard let accountId = UUID(uuidString: account) else {
+                throw KeychainError.invalidData
+            }
+            try saveAccountToken(accountId: accountId, token: value)
+        case cloudflareTokenService:
+            guard let accountId = UUID(uuidString: account) else {
+                throw KeychainError.invalidData
+            }
+            try saveCloudflareToken(accountId: accountId, token: value)
+        default:
+            try writeGenericSecret(service: service, account: account, value: value)
+        }
+    }
+
+    func delete(service: String, account: String) throws {
+        switch service {
+        case accountTokenService:
+            guard let accountId = UUID(uuidString: account) else { return }
+            try deleteAccountToken(accountId: accountId)
+        case cloudflareTokenService:
+            guard let accountId = UUID(uuidString: account) else { return }
+            try deleteCloudflareToken(accountId: accountId)
+        default:
+            try deleteGenericSecret(service: service, account: account)
+        }
+    }
+
+    func deleteAll(servicePrefix: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: servicePrefix,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: true
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        if status == errSecItemNotFound {
+            return
+        }
+
+        guard status == errSecSuccess else {
+            throw KeychainError.unexpectedStatus(status)
+        }
+
+        guard let items = result as? [[String: Any]] else {
+            return
+        }
+
+        for item in items {
+            guard let account = item[kSecAttrAccount as String] as? String,
+                  let service = item[kSecAttrService as String] as? String else {
+                continue
+            }
+            try? delete(service: service, account: account)
+        }
+    }
+
+    // MARK: - Private Generic Helpers
+
+    private func readGenericSecret(service: String, account: String) throws -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnData as String: true
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+
+        return value
+    }
+
+    private func writeGenericSecret(service: String, account: String, value: String) throws {
+        guard let data = value.data(using: .utf8) else {
+            throw KeychainError.encodingFailed
+        }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
+        ]
+
+        let status = SecItemAdd(query as CFDictionary, nil)
+
+        if status == errSecDuplicateItem {
+            let searchQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecAttrAccount as String: account
+            ]
+            let attrs: [String: Any] = [kSecValueData as String: data]
+            let updateStatus = SecItemUpdate(searchQuery as CFDictionary, attrs as CFDictionary)
+            guard updateStatus == errSecSuccess else {
+                throw KeychainError.unexpectedStatus(updateStatus)
+            }
+        } else if status != errSecSuccess {
+            throw KeychainError.unexpectedStatus(status)
+        }
+    }
+
+    private func deleteGenericSecret(service: String, account: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            throw KeychainError.unexpectedStatus(status)
+        }
     }
 }

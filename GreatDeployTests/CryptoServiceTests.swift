@@ -124,10 +124,10 @@ final class CryptoServiceTests: XCTestCase {
         defer { svc.lock() }
 
         let payload = Data("integrity-critical-data".utf8)
-        let signed = try svc.sign(payload: payload)
+        let signed = try svc.sign(payload)
 
         // Should verify successfully
-        try svc.verify(signed: signed)
+        try svc.verify(signed)
 
         // Tamper with payload
         var tamperedPayload = payload
@@ -139,7 +139,7 @@ final class CryptoServiceTests: XCTestCase {
             alg: signed.alg
         )
 
-        XCTAssertThrowsError(try svc.verify(signed: tampered)) { error in
+        XCTAssertThrowsError(try svc.verify(tampered)) { error in
             guard let cryptoError = error as? CryptoError,
                   case .signatureMismatch = cryptoError else {
                 return XCTFail("Expected CryptoError.signatureMismatch, got \(error)")

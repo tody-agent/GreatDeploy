@@ -1,0 +1,13 @@
+{
+  "autoUpdate": true,
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/test"]
+    },
+    "user-claude-server": {
+      "command": "echo",
+      "args": ["claude-specific"]
+    }
+  }
+}

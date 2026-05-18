@@ -111,36 +111,42 @@ final class GitConfigService: GitConfigServicing {
     }
 
     private func findGitUsingWhich() -> String? {
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
-        process.arguments = ["git"]
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: String?
 
-        do {
-            try process.run()
-            // SECURITY: Timeout to prevent indefinite hangs (MED-01 fix)
-            let completed = process.waitUntilExitOrTimeout(seconds: 5)
-            if completed && process.terminationStatus == 0 {
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task.detached(priority: .utility) {
+            do {
+                let processResult = try await self.processRunner.run(
+                    executable: URL(fileURLWithPath: "/usr/bin/which"),
+                    arguments: ["git"],
+                    timeout: 5
+                )
+                if processResult.exitCode == 0, !processResult.stdout.isEmpty {
+                    result = processResult.stdout
+                }
+            } catch {
+                // Ignore errors
             }
-        } catch {
-            // Ignore errors
+            semaphore.signal()
         }
-        return nil
+
+        _ = semaphore.wait(timeout: .now() + 10)
+        return result
     }
 
     // MARK: - Singleton
 
     static let shared = GitConfigService()
-    private init() {}
 
     // MARK: - Git Path Caching
 
     private var _cachedGitPath: String?
     private let gitPathLock = NSLock()
+    private let processRunner: ProcessRunner
+
+    init(processRunner: ProcessRunner = MacProcessRunner.shared) {
+        self.processRunner = processRunner
+    }
 
     // MARK: - Input Validation
 
@@ -233,30 +239,17 @@ final class GitConfigService: GitConfigServicing {
 
     /// Clears the in-memory credential cache (credential-cache helper)
     private func clearCredentialCacheHelper() {
-        let process = Process()
-
         guard let validatedGitPath = try? gitPath else { return }
-        process.executableURL = URL(fileURLWithPath: validatedGitPath)
-        process.arguments = ["credential-cache", "exit"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        // SECURITY: Sanitize environment
-        process.environment = [
-            "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
-            "PATH": "/usr/bin:/bin:/usr/local/bin",
-            "LANG": "en_US.UTF-8"
-        ]
-
-        do {
-            try process.run()
-            // SECURITY: Timeout to prevent indefinite hangs (MED-01 fix)
-            let completed = process.waitUntilExitOrTimeout(seconds: 5)
-            if !completed {
-                process.terminate()
+        Task.detached(priority: .utility) {
+            do {
+                _ = try await self.processRunner.run(
+                    executable: URL(fileURLWithPath: validatedGitPath),
+                    arguments: ["credential-cache", "exit"],
+                    timeout: 5
+                )
+            } catch {
+                // Ignore errors - cache might not be running
             }
-        } catch {
-            // Ignore errors - cache might not be running
         }
     }
 
@@ -302,54 +295,42 @@ final class GitConfigService: GitConfigServicing {
 
     @discardableResult
     private func runGitCommand(_ arguments: [String]) throws -> String {
-        let process = Process()
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-
         // SECURITY: Get validated git path (with code signature verification)
         let validatedGitPath = try gitPath
-        process.executableURL = URL(fileURLWithPath: validatedGitPath)
-        process.arguments = arguments
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
 
-        // SECURITY: Sanitize environment to prevent command injection
-        // Restrict to essential variables only, blocking dangerous vars like:
-        // GIT_SSH_COMMAND, GIT_EXEC_PATH, core.editor, core.pager
-        process.environment = [
-            "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
-            "PATH": "/usr/bin:/bin:/usr/local/bin",
-            "LANG": "en_US.UTF-8",
-            "GIT_CONFIG_NOSYSTEM": "1",      // Disable system-level config
-            "GIT_TERMINAL_PROMPT": "0",      // Disable interactive prompts
-            "GIT_ASKPASS": "/bin/echo"       // Prevent credential prompts
-        ]
+        let semaphore = DispatchSemaphore(value: 0)
+        var processResult: ProcessResult?
+        var caughtError: Error?
 
-        do {
-            try process.run()
-        } catch {
-            throw GitConfigError.gitNotFound
+        Task.detached(priority: .userInitiated) {
+            do {
+                processResult = try await self.processRunner.run(
+                    executable: URL(fileURLWithPath: validatedGitPath),
+                    arguments: arguments,
+                    timeout: 10
+                )
+            } catch {
+                caughtError = error
+            }
+            semaphore.signal()
         }
 
-        // SECURITY: Use timeout to prevent indefinite hangs (MED-01 fix)
-        let completed = process.waitUntilExitOrTimeout(seconds: 10)
-        if !completed {
-            process.terminate()
+        _ = semaphore.wait(timeout: .now() + 15)
+
+        if let error = caughtError {
+            throw GitConfigError.commandFailed(error.localizedDescription)
+        }
+
+        guard let result = processResult else {
             throw GitConfigError.commandFailed("Git operation timed out")
         }
 
-        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-
-        let stdout = String(data: stdoutData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let stderr = String(data: stderrData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-        guard process.terminationStatus == 0 else {
-            let sanitizedError = sanitizeGitError(stderr, arguments: arguments)
+        guard result.exitCode == 0 else {
+            let sanitizedError = sanitizeGitError(result.stderr, arguments: arguments)
             throw GitConfigError.commandFailed(sanitizedError)
         }
 
-        return stdout
+        return result.stdout
     }
 
     /// Sanitizes git error messages to prevent information disclosure

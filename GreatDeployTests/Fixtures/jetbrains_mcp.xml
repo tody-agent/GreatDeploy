@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mcpSettings version="1">
+  <servers>
+    <serverConfiguration name="filesystem" command="npx" args="-y @mcp/filesystem" enabled="true">
+      <envs>
+        <env name="API_KEY" value="test-key"/>
+      </envs>
+    </serverConfiguration>
+    <serverConfiguration name="user-jb-server" command="echo" args="jetbrains-specific" enabled="true"/>
+  </servers>
+</mcpSettings>

@@ -8,18 +8,21 @@ final class CloudflareAdapter: CloudflareAdapting {
     static let shared = CloudflareAdapter()
 
     private let homeDirectory: URL
-    private let fileManager: FileManager
+    private let processRunner: ProcessRunner
+    private let fileSystem: FileSystem
     private let launchctlRunner: ((String, [String]) throws -> Void)?
     private let launchctlEnvironmentReader: ((String) -> String?)?
 
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
-        fileManager: FileManager = .default,
+        processRunner: ProcessRunner = MacProcessRunner.shared,
+        fileSystem: FileSystem = MacFileSystem.shared,
         launchctlRunner: ((String, [String]) throws -> Void)? = nil,
         launchctlEnvironmentReader: ((String) -> String?)? = nil
     ) {
         self.homeDirectory = homeDirectory
-        self.fileManager = fileManager
+        self.processRunner = processRunner
+        self.fileSystem = fileSystem
         self.launchctlRunner = launchctlRunner
         self.launchctlEnvironmentReader = launchctlEnvironmentReader
     }
@@ -32,7 +35,7 @@ final class CloudflareAdapter: CloudflareAdapting {
     func applyToken(_ token: String, accountId: String, syncWranglerConfig: Bool = false) async throws {
         try await Task.detached(priority: .userInitiated) {
             // 1. Update macOS GUI environment variables via launchctl.
-            try self.updateLaunchctlEnvironment(token: token, accountId: accountId)
+            try await self.updateLaunchctlEnvironment(token: token, accountId: accountId)
 
             // 2. Wrangler config is plaintext, so keep it explicit opt-in only.
             if syncWranglerConfig {
@@ -52,87 +55,64 @@ final class CloudflareAdapter: CloudflareAdapting {
             return launchctlEnvironmentReader("CLOUDFLARE_ACCOUNT_ID")
         }
 
-        return await Task<String?, Never>.detached(priority: .utility) { () -> String? in
-            let process = Process()
-            let pipe = Pipe()
-
-            process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            process.arguments = ["getenv", "CLOUDFLARE_ACCOUNT_ID"]
-            process.standardOutput = pipe
-            process.standardError = FileHandle.nullDevice
-
-            do {
-                try process.run()
-                let completed = process.waitUntilExitOrTimeout(seconds: 5)
-                guard completed, process.terminationStatus == 0 else {
-                    if !completed {
-                        process.terminate()
-                    }
-                    return nil
-                }
-
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let value = String(data: data, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                return value?.isEmpty == false ? value : nil
-            } catch {
+        do {
+            let result = try await processRunner.run(
+                executable: URL(fileURLWithPath: "/bin/launchctl"),
+                arguments: ["getenv", "CLOUDFLARE_ACCOUNT_ID"],
+                timeout: 5
+            )
+            guard result.exitCode == 0, !result.stdout.isEmpty else {
                 return nil
             }
-        }.value
+            return result.stdout
+        } catch {
+            return nil
+        }
     }
 
-    private func updateLaunchctlEnvironment(token: String, accountId: String) throws {
-        let setenvPath = "/bin/launchctl"
-
-        try runLaunchctl(
-            executablePath: setenvPath,
+    private func updateLaunchctlEnvironment(token: String, accountId: String) async throws {
+        try await runLaunchctl(
+            executablePath: "/bin/launchctl",
             arguments: token.isEmpty
                 ? ["unsetenv", "CLOUDFLARE_API_TOKEN"]
                 : ["setenv", "CLOUDFLARE_API_TOKEN", token]
         )
 
-        try runLaunchctl(
-            executablePath: setenvPath,
+        try await runLaunchctl(
+            executablePath: "/bin/launchctl",
             arguments: accountId.isEmpty
                 ? ["unsetenv", "CLOUDFLARE_ACCOUNT_ID"]
                 : ["setenv", "CLOUDFLARE_ACCOUNT_ID", accountId]
         )
     }
 
-    private func runLaunchctl(executablePath: String, arguments: [String]) throws {
+    private func runLaunchctl(executablePath: String, arguments: [String]) async throws {
         if let launchctlRunner {
             try launchctlRunner(executablePath, arguments)
             return
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
-        process.arguments = arguments
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        try process.run()
-        let completed = process.waitUntilExitOrTimeout(seconds: 10)
-        if !completed {
-            process.terminate()
-            throw CloudflareAdapterError.processTimeout
-        }
-        guard process.terminationStatus == 0 else {
+        let result = try await processRunner.run(
+            executable: URL(fileURLWithPath: executablePath),
+            arguments: arguments,
+            timeout: 10
+        )
+        guard result.exitCode == 0 else {
             throw CloudflareAdapterError.commandFailed
         }
     }
 
     private func updateWranglerConfig(token: String, accountId: String) throws {
         let primaryConfigDir = homeDirectory.appendingPathComponent(".wrangler/config", isDirectory: true)
-        if !fileManager.fileExists(atPath: primaryConfigDir.path) {
-            try fileManager.createDirectory(at: primaryConfigDir, withIntermediateDirectories: true, attributes: nil)
+        if !fileSystem.exists(primaryConfigDir) {
+            try fileSystem.createDirectory(at: primaryConfigDir)
         }
 
         let configFile = primaryConfigDir.appendingPathComponent("default.toml")
 
         if token.isEmpty {
-            if fileManager.fileExists(atPath: configFile.path) {
-                try fileManager.removeItem(at: configFile)
+            if fileSystem.exists(configFile) {
+                try? FileManager.default.removeItem(at: configFile)
             }
         } else {
             let content = """
@@ -143,8 +123,8 @@ final class CloudflareAdapter: CloudflareAdapting {
             guard let data = content.data(using: .utf8) else {
                 throw CloudflareAdapterError.encodingFailed
             }
-            try data.write(to: configFile, options: [.atomic])
-            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configFile.path)
+            try fileSystem.atomicWrite(data, to: configFile)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configFile.path)
         }
     }
 

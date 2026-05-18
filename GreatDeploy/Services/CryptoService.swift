@@ -1,6 +1,6 @@
 import Foundation
 import CryptoKit
-import Argon2Swift
+import CommonCrypto
 
 // MARK: - Errors
 
@@ -36,32 +36,6 @@ public enum CryptoError: Error, LocalizedError {
     }
 }
 
-// MARK: - Envelope (wire format for encrypted items)
-
-public struct CryptoEnvelope: Codable, Equatable {
-    public let v: Int                 // schema version
-    public let alg: String            // "chacha20poly1305"
-    public let kdf: KDFParams         // params needed to re-derive the key
-    public let nonce: Data            // 12 bytes
-    public let ct: Data               // ciphertext || auth tag (combined .ciphertext + .tag)
-    public let aad: String?           // human-readable AAD, e.g. "github_pat:personal"
-
-    public struct KDFParams: Codable, Equatable {
-        public let name: String       // "argon2id"
-        public let salt: Data         // per-vault salt, 16 bytes
-        public let memKiB: Int        // memory cost (KiB)
-        public let iters: Int         // time cost
-        public let parallel: Int      // lanes
-    }
-}
-
-// MARK: - Manifest signature (for plain-text integrity)
-
-public struct SignedManifest: Codable, Equatable {
-    public let payload: Data          // canonical JSON bytes of the manifest
-    public let hmac: Data             // HMAC-SHA256(master_key_sig, payload)
-    public let alg: String            // "hmac-sha256"
-}
 
 // MARK: - CryptoService
 
@@ -82,7 +56,7 @@ public final class CryptoService {
     private var signingKey: SymmetricKey?          // for HMAC, separate per HKDF
     private var currentSalt: Data?                 // remembered after unlock for re-use
 
-    private init() {}
+    init() {}
 
     public var isUnlocked: Bool {
         queue.sync { masterKey != nil }
@@ -103,7 +77,7 @@ public final class CryptoService {
     }
 
     public static func generatePassphrase() -> String {
-        let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789")
+        let alphabet = Array("ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789")
         var out = ""
         out.reserveCapacity(requiredPassphraseLength)
         for _ in 0..<requiredPassphraseLength {
@@ -146,7 +120,7 @@ public final class CryptoService {
         return saltToUse
     }
 
-    public func verify(passphrase: String, sentinel: CryptoEnvelope) -> Bool {
+    func verify(passphrase: String, sentinel: CryptoEnvelope) -> Bool {
         do {
             _ = try unlock(passphrase: passphrase, salt: sentinel.kdf.salt)
             _ = try decrypt(envelope: sentinel)
@@ -156,14 +130,14 @@ public final class CryptoService {
         }
     }
 
-    public func makeSentinel() throws -> CryptoEnvelope {
+    func makeSentinel() throws -> CryptoEnvelope {
         return try encrypt(
             plaintext: Data("GREATDEPLOY-VAULT-OK".utf8),
             aad: "vault:sentinel"
         )
     }
 
-    public func encrypt(plaintext: Data, aad: String?) throws -> CryptoEnvelope {
+    func encrypt(plaintext: Data, aad: String?) throws -> CryptoEnvelope {
         guard let key = queue.sync(execute: { masterKey }),
               let salt = queue.sync(execute: { currentSalt }) else {
             throw CryptoError.keyNotUnlocked
@@ -196,7 +170,7 @@ public final class CryptoService {
         )
     }
 
-    public func decrypt(envelope: CryptoEnvelope) throws -> Data {
+    func decrypt(envelope: CryptoEnvelope) throws -> Data {
         guard let key = queue.sync(execute: { masterKey }) else {
             throw CryptoError.keyNotUnlocked
         }
@@ -229,11 +203,11 @@ public final class CryptoService {
         }
     }
 
-    public func encryptString(_ s: String, aad: String?) throws -> CryptoEnvelope {
+    func encryptString(_ s: String, aad: String?) throws -> CryptoEnvelope {
         try encrypt(plaintext: Data(s.utf8), aad: aad)
     }
 
-    public func decryptString(_ env: CryptoEnvelope) throws -> String {
+    func decryptString(_ env: CryptoEnvelope) throws -> String {
         let d = try decrypt(envelope: env)
         guard let s = String(data: d, encoding: .utf8) else {
             throw CryptoError.malformedEnvelope(reason: "plaintext is not valid UTF-8")
@@ -241,7 +215,7 @@ public final class CryptoService {
         return s
     }
 
-    public func sign(_ payload: Data) throws -> SignedManifest {
+    func sign(_ payload: Data) throws -> SignedManifest {
         guard let mk = queue.sync(execute: { signingKey }) else {
             throw CryptoError.keyNotUnlocked
         }
@@ -250,7 +224,7 @@ public final class CryptoService {
     }
 
     @discardableResult
-    public func verify(_ signed: SignedManifest) throws -> Data {
+    func verify(_ signed: SignedManifest) throws -> Data {
         guard let mk = queue.sync(execute: { signingKey }) else {
             throw CryptoError.keyNotUnlocked
         }
@@ -277,20 +251,20 @@ public final class CryptoService {
     }
 
     private static func deriveKey(passphrase: String, salt: Data) throws -> Data {
-        do {
-            let saltObj = Salt(bytes: salt)
-            let result = try Argon2Swift.hashPasswordString(
-                password: passphrase,
-                salt: saltObj,
-                iterations: Int32(kdfIterations),
-                memory: Int32(kdfMemoryKiB),
-                parallelism: Int32(kdfParallelism),
-                length: Int32(derivedKeyBytes),
-                type: .id   // Argon2id
-            )
-            return result.hashData()
-        } catch {
-            throw CryptoError.kdfFailed(underlying: error)
+        var derivedKey = Data(repeating: 0, count: derivedKeyBytes)
+        let status = derivedKey.withUnsafeMutableBytes { derivedKeyPtr in
+            salt.withUnsafeBytes { saltPtr in
+                CCKeyDerivationPBKDF(
+                    CCPBKDFAlgorithm(kCCPBKDF2),
+                    passphrase, passphrase.utf8.count,
+                    saltPtr.baseAddress?.assumingMemoryBound(to: UInt8.self), salt.count,
+                    CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                    UInt32(kdfIterations),
+                    derivedKeyPtr.baseAddress?.assumingMemoryBound(to: UInt8.self), derivedKeyBytes
+                )
+            }
         }
+        guard status == kCCSuccess else { throw CryptoError.kdfFailed(underlying: NSError(domain: "CryptoService", code: Int(status), userInfo: nil)) }
+        return derivedKey
     }
 }

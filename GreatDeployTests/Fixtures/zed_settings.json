@@ -1,0 +1,13 @@
+{
+  "theme": "onedark",
+  "context_servers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/test"]
+    },
+    "user-zed-server": {
+      "command": "echo",
+      "args": ["zed-specific"]
+    }
+  }
+}
