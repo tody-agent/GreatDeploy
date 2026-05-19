@@ -2,85 +2,304 @@ import SwiftUI
 
 struct HomeDashboardView: View {
     @EnvironmentObject var accountStore: AccountStore
-    @Binding var selectedItem: SidebarItem?
     @State private var isSwitching = false
     @AppStorage("showNotificationOnSwitch") private var showNotificationOnSwitch = true
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 32) {
+            VStack(spacing: 32) {
                 if accountStore.accounts.isEmpty {
-                    VStack(alignment: .center, spacing: 16) {
-                        Image(systemName: "person.3.sequence.fill").font(.system(size: 64)).foregroundStyle(.blue.gradient)
-                        Text("Welcome to GreatDeploy").font(.largeTitle).fontWeight(.bold).multilineTextAlignment(.center)
-                        Text("Manage and switch Git, Cloudflare profiles at lightning speed.").font(.title3).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        Button(action: { selectedItem = .addAccount }) { Label("Add new profile", systemImage: "plus.circle.fill").font(.headline).foregroundStyle(.white).padding(.horizontal, 24).padding(.vertical, 14).background(Color.blue).clipShape(RoundedRectangle(cornerRadius: 12)) }.buttonStyle(.plain)
-                    }.frame(maxWidth: .infinity).padding(.top, 40)
+                    emptyStateView
                 } else {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Connection Status").font(.headline)
-                        HStack(spacing: 16) {
-                            StatusCard(title: "GitHub CLI", icon: "terminal", statusText: "Installed", statusColor: .green, gradientColors: [.blue, .purple])
-                            StatusCard(title: "Active Profile", icon: "person.crop.circle.fill", statusText: accountStore.activeAccount?.displayName ?? "Not selected", statusColor: accountStore.activeAccount != nil ? .green : .orange, gradientColors: [.green, .blue])
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Quick Actions").font(.headline)
-                        HStack(spacing: 16) {
-                            QuickActionCard(icon: "arrow.triangle.2.circlepath", title: "Sync", description: "Đồng bộ dữ liệu", color: .blue) { selectedItem = .sync }
-                            QuickActionCard(icon: "square.stack.3d.up", title: "Tool Registry", description: "Multi-tool sync", color: .green) { selectedItem = .toolRegistry }
-                            QuickActionCard(icon: "sparkles", title: "Skills", description: "Quản lý AI skills", color: .purple) { selectedItem = .skills }
-                            QuickActionCard(icon: "server.rack", title: "MCP", description: "Quản lý MCP servers", color: .orange) { selectedItem = .mcp }
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack { Text("Profile List").font(.headline); Spacer(); Button(action: { selectedItem = .addAccount }) { Label("Add Profile", systemImage: "plus").font(.subheadline).fontWeight(.medium) }.buttonStyle(.link) }
-                        VStack(spacing: 0) {
-                            ForEach(accountStore.accounts) { account in
-                                ProfileRowView(account: account, isSwitching: $isSwitching, onSwitch: { if !account.isActive { Task { await performAccountSwitch(to: account, accountStore: accountStore, isSwitching: $isSwitching, showNotification: showNotificationOnSwitch) } } }, onEdit: { selectedItem = .account(account) })
-                                if account.id != accountStore.accounts.last?.id { Divider().padding(.leading, 72) }
+                    statusSection
+                    quickSwitchSection
+                    quickActionsSection
+                }
+            }
+            .padding(30)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    private var statusSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Status")
+                .font(.headline)
+            HStack(spacing: 16) {
+                StatusCard(
+                    title: "Active Profile",
+                    icon: "person.crop.circle.fill",
+                    statusText: accountStore.activeAccount?.displayName ?? "None",
+                    statusColor: accountStore.activeAccount != nil ? .green : .orange,
+                    gradientColors: [.green, .blue]
+                )
+                StatusCard(
+                    title: "GitHub CLI",
+                    icon: "terminal",
+                    statusText: GitHubCLIService.shared.isInstalled ? "Installed" : "Not installed",
+                    statusColor: GitHubCLIService.shared.isInstalled ? .green : .orange,
+                    gradientColors: [.blue, .purple]
+                )
+                StatusCard(
+                    title: "Accounts",
+                    icon: "person.2.fill",
+                    statusText: "\(accountStore.accounts.count)",
+                    statusColor: .blue,
+                    gradientColors: [.blue, .cyan]
+                )
+            }
+        }
+    }
+
+    private var quickSwitchSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Profiles")
+                    .font(.headline)
+                Spacer()
+            }
+            VStack(spacing: 0) {
+                ForEach(accountStore.accounts) { account in
+                    ProfileRowView(
+                        account: account,
+                        isSwitching: $isSwitching,
+                        onSwitch: {
+                            if !account.isActive {
+                                Task {
+                                    await performAccountSwitch(
+                                        to: account,
+                                        accountStore: accountStore,
+                                        isSwitching: $isSwitching,
+                                        showNotification: showNotificationOnSwitch
+                                    )
+                                }
                             }
-                        }.background(Color(nsColor: .controlBackgroundColor)).clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    )
+                    if account.id != accountStore.accounts.last?.id {
+                        Divider().padding(.leading, 72)
                     }
                 }
-                Spacer()
-            }.padding(30).frame(maxWidth: .infinity, alignment: .leading)
-        }.background(Color(nsColor: .textBackgroundColor))
+            }
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    private var quickActionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Quick Actions")
+                .font(.headline)
+            HStack(spacing: 16) {
+                QuickActionCard(
+                    icon: "person.badge.plus",
+                    title: "Add Profile",
+                    description: "New account",
+                    color: .blue
+                ) {
+                    // Add profile action
+                }
+                QuickActionCard(
+                    icon: "arrow.triangle.2.circlepath",
+                    title: "Sync",
+                    description: "Sync skills & MCP",
+                    color: .green
+                ) {
+                    // Sync action
+                }
+                QuickActionCard(
+                    icon: "sparkles",
+                    title: "Skills",
+                    description: "Manage AI skills",
+                    color: .purple
+                ) {
+                    // Skills action
+                }
+            }
+        }
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(colors: [.blue.opacity(0.15), .purple.opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 100, height: 100)
+                    .blur(radius: 20)
+                Image(systemName: "person.crop.circle.badge.plus")
+                    .font(.system(size: 56))
+                    .foregroundStyle(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+            VStack(spacing: 8) {
+                Text("Welcome to GreatDeploy")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Text("Manage GitHub accounts, Cloudflare, and AI skills in one place.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            VStack(spacing: 12) {
+                featureRow(icon: "arrow.triangle.2.circlepath", text: "One-click profile switching")
+                featureRow(icon: "key.fill", text: "Secure Keychain storage")
+                featureRow(icon: "terminal", text: "Auto-update git config")
+                featureRow(icon: "sparkles", text: "Global AI skills across tools")
+            }
+            .padding()
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func featureRow(icon: String, text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundStyle(.blue)
+                .frame(width: 24)
+            Text(text)
+                .font(.subheadline)
+        }
     }
 }
 
 struct ProfileRowView: View {
-    let account: DevProfile; @Binding var isSwitching: Bool; let onSwitch: () -> Void; let onEdit: () -> Void
+    let account: DevProfile
+    @Binding var isSwitching: Bool
+    let onSwitch: () -> Void
+    @State private var isHovering = false
+
     var body: some View {
         HStack(spacing: 16) {
-            ZStack { Circle().fill(account.isActive ? Color.green.opacity(0.15) : Color.secondary.opacity(0.1)).frame(width: 40, height: 40); Text(String(account.displayName.prefix(1)).uppercased()).font(.system(size: 16, weight: .bold, design: .rounded)).foregroundStyle(account.isActive ? .green : .secondary) }
-            VStack(alignment: .leading, spacing: 4) { HStack(spacing: 8) { Text(account.displayName).font(.headline); if account.isActive { Text("Active").font(.caption2).fontWeight(.bold).foregroundStyle(.white).padding(.horizontal, 6).padding(.vertical, 2).background(Color.green).clipShape(Capsule()) } }; Text("@\(account.githubUsername)").font(.subheadline).foregroundStyle(.secondary) }
+            ZStack {
+                Circle()
+                    .fill(account.isActive ? Color.green.opacity(0.15) : Color.secondary.opacity(0.1))
+                    .frame(width: 40, height: 40)
+                Text(String(account.displayName.prefix(1)).uppercased())
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(account.isActive ? .green : .secondary)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text(account.displayName)
+                        .font(.headline)
+                    if account.isActive {
+                        Text("Active")
+                            .font(.caption2)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green)
+                            .clipShape(Capsule())
+                    }
+                }
+                Text("@\(account.githubUsername)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
             HStack(spacing: 16) {
-                Button(action: onEdit) { Image(systemName: "pencil.circle").font(.title2).foregroundStyle(.blue) }.buttonStyle(.plain)
-                Button(action: onSwitch) { HStack(spacing: 6) { if isSwitching && account.isActive { ProgressView().controlSize(.small) } else { Text(account.isActive ? "Active" : "Switch") } }.frame(minWidth: 80).fontWeight(.medium).padding(.horizontal, 16).padding(.vertical, 8).background(account.isActive ? Color.green.opacity(0.1) : Color.blue.opacity(0.1)).foregroundStyle(account.isActive ? .green : .blue).clipShape(Capsule()) }.buttonStyle(.plain).disabled(account.isActive || isSwitching)
+                if isSwitching && !account.isActive {
+                    ProgressView()
+                        .controlSize(.small)
+                } else if !account.isActive {
+                    Button(action: onSwitch) {
+                        Text("Switch")
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color.blue.opacity(0.1))
+                            .foregroundStyle(.blue)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-        }.padding(.horizontal, 16).padding(.vertical, 12).contentShape(Rectangle()).onTapGesture { onSwitch() }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) { isHovering = hovering }
+        }
     }
 }
 
 struct StatusCard: View {
-    let title: String; let icon: String; let statusText: String; let statusColor: Color; let gradientColors: [Color]
+    let title: String
+    let icon: String
+    let statusText: String
+    let statusColor: Color
+    let gradientColors: [Color]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack { ZStack { Circle().fill(LinearGradient(colors: gradientColors.map { $0.opacity(0.2) }, startPoint: .topLeading, endPoint: .bottomTrailing)).frame(width: 40, height: 40); Image(systemName: icon).font(.system(size: 20)).foregroundStyle(LinearGradient(colors: gradientColors, startPoint: .topLeading, endPoint: .bottomTrailing)) }; Spacer() }
-            VStack(alignment: .leading, spacing: 4) { Text(title).font(.subheadline).foregroundStyle(.secondary); HStack(spacing: 6) { Circle().fill(statusColor).frame(width: 8, height: 8); Text(statusText).font(.headline).foregroundStyle(.primary).lineLimit(1) } }
-        }.padding().frame(maxWidth: .infinity, alignment: .leading).background(Color(nsColor: .controlBackgroundColor)).clipShape(RoundedRectangle(cornerRadius: 12))
+            HStack {
+                ZStack {
+                    Circle()
+                        .fill(LinearGradient(colors: gradientColors.map { $0.opacity(0.2) }, startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: icon)
+                        .font(.system(size: 20))
+                        .foregroundStyle(LinearGradient(colors: gradientColors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                }
+                Spacer()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 8, height: 8)
+                    Text(statusText)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
 struct QuickActionCard: View {
-    let icon: String; let title: String; let description: String; let color: Color; let action: () -> Void
+    let icon: String
+    let title: String
+    let description: String
+    let color: Color
+    let action: () -> Void
     @State private var isHovering = false
+
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 12) { Image(systemName: icon).font(.system(size: 28)).foregroundStyle(color); VStack(spacing: 4) { Text(title).font(.headline); Text(description).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center) } }.frame(maxWidth: .infinity).padding(16).background(isHovering ? color.opacity(0.1) : Color(nsColor: .controlBackgroundColor)).clipShape(RoundedRectangle(cornerRadius: 12))
-        }.buttonStyle(.plain).onHover { hovering in
+            VStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 28))
+                    .foregroundStyle(color)
+                VStack(spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                    Text(description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(16)
+            .background(isHovering ? color.opacity(0.1) : Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) { isHovering = hovering }
         }
     }

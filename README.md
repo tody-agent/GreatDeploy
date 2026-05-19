@@ -1,7 +1,7 @@
 # Great Deploy
 
 <p align="center">
-  <img src="Assets/GreatDeploy_GitHub_Thumbnail.png" alt="Great Deploy Thumbnail" width="100%">
+  <img src="Assets/Promotion/thumbnail.png" alt="Great Deploy Thumbnail" width="100%">
 </p>
 
 <p align="center">
@@ -24,9 +24,17 @@
 
 ## 🛑 The Problem
 
+<p align="center">
+  <img src="Assets/Promotion/problem.png" alt="The Chaos of Managing Multiple Environments" width="100%">
+</p>
+
 Juggling multiple developer identities is a headache. Whether you're switching between your **Personal**, **Work**, or **Client** accounts, manually updating your `git config`, managing different Personal Access Tokens (PATs), and swapping Cloudflare credentials takes time and leads to embarrassing accidental commits on the wrong account.
 
 ## 🚀 The Solution
+
+<p align="center">
+  <img src="Assets/Promotion/solution.png" alt="A Clean, Organized Workspace with GreatDeploy" width="100%">
+</p>
 
 **Great Deploy** is your one-click context switcher. Living quietly in your macOS menu bar, it allows you to instantly switch your entire development environment. 
 
@@ -247,6 +255,10 @@ Select these scopes:
 3. Click **"Generate token"** and **copy it immediately** (you won't see it again!)
 
 ## How It Works
+
+<p align="center">
+  <img src="Assets/Promotion/architecture.png" alt="GreatDeploy Architecture & Model Context Protocol" width="100%">
+</p>
 
 ### Keychain Management
 

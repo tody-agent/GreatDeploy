@@ -8,30 +8,35 @@ import ServiceManagement
 struct GreatDeployApp: App {
     @StateObject private var accountStore = AccountStore()
     @State private var showingAddAccount = false
+    @State private var showingSkillsReview = false
+    @State private var discoveryStatus: HarvestStatus = .neverRun
+    @AppStorage("hasCompletedSkillDiscovery") private var hasCompletedDiscovery = false
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
-        // Request notification permissions
         Task {
             try? await UNUserNotificationCenter.current().requestAuthorization(
                 options: [.alert, .sound, .badge, .provisional]
             )
         }
     }
-
+    
     var body: some Scene {
-        // Main window — macOS Settings style NavigationSplitView
-        // NOTE: Dock icon visibility is managed by AppDelegate via window notifications
         Window("Great Deploy", id: "main") {
             SettingsWindowView()
                 .environmentObject(accountStore)
+                .task {
+                    await checkFirstRunDiscovery()
+                }
+                .sheet(isPresented: $showingSkillsReview) {
+                    SkillsReviewView()
+                }
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
         .windowStyle(.titleBar)
         .defaultSize(width: 750, height: 520)
 
-        // Menu bar extra
         MenuBarExtra {
             MenuBarContentView(showingAddAccount: $showingAddAccount)
                 .environmentObject(accountStore)
@@ -39,6 +44,24 @@ struct GreatDeployApp: App {
             menuBarLabel
         }
         .menuBarExtraStyle(.window)
+    }
+    
+    private func checkFirstRunDiscovery() async {
+        guard !hasCompletedDiscovery else { return }
+        
+        let harvester = SkillsHarvesterService.shared
+        discoveryStatus = .running
+        
+        let skills = try? await harvester.harvestAllSkills()
+        
+        if let skills = skills, !skills.isEmpty {
+            discoveryStatus = .completed(skillCount: skills.count, toolCount: skills.count, discoveredAt: Date())
+            showingSkillsReview = true
+        } else {
+            discoveryStatus = .neverRun
+        }
+        
+        hasCompletedDiscovery = true
     }
 
     @ViewBuilder

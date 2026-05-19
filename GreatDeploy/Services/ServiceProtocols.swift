@@ -326,3 +326,52 @@ struct MCPSyncReport: Codable {
         self.timestamp = timestamp
     }
 }
+
+// MARK: - Skill Harvester Protocols
+
+protocol SkillsHarvesting {
+    func harvestAllSkills() async throws -> [DiscoveredSkill]
+    func cachedDiscovery() -> DiscoveryCache?
+    func clearCache() throws
+    func discoveryStatus() -> HarvestStatus
+}
+
+enum HarvestStatus: Equatable {
+    case neverRun
+    case running
+    case completed(skillCount: Int, toolCount: Int, discoveredAt: Date)
+    case failed(String)
+    
+    public var displayLabel: String {
+        switch self {
+        case .neverRun: return "Never run"
+        case .running: return "Scanning..."
+        case .completed(let skills, let tools, _): return "\(skills) skills from \(tools) tools"
+        case .failed(let error): return "Failed: \(error)"
+        }
+    }
+    
+    public var pendingReviewCount: Int? {
+        if case .completed(let skills, _, _) = self { return skills }
+        return nil
+    }
+}
+
+enum HarvestingError: LocalizedError {
+    case noToolsInstalled
+    case scanFailed(String)
+    case cacheFailed(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .noToolsInstalled: return "No AI tools installed"
+        case .scanFailed(let tool): return "Failed to scan \(tool)"
+        case .cacheFailed(let detail): return "Cache failed: \(detail)"
+        }
+    }
+}
+
+protocol HarvestNotificationServicing {
+    func requestAuthorization() async -> Bool
+    func sendDiscoveryNotification(skillCount: Int, toolCount: Int)
+}
